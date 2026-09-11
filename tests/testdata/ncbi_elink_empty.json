@@ -1,0 +1,15 @@
+{
+  "header": {
+    "type": "elink",
+    "version": "0.3"
+  },
+  "linksets": [
+    {
+      "dbfrom": "gene",
+      "ids": [
+        "999999"
+      ],
+      "linksetdbs": []
+    }
+  ]
+}

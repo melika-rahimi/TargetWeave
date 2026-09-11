@@ -1,0 +1,23 @@
+{
+  "query_id": "fixture-experimental",
+  "result_type": "polymer_entity",
+  "total_count": 4,
+  "result_set": [
+    {
+      "identifier": "1NQL_1",
+      "score": 1
+    },
+    {
+      "identifier": "1M17_1",
+      "score": 1
+    },
+    {
+      "identifier": "1Z9I_1",
+      "score": 1
+    },
+    {
+      "identifier": "2GS6_1",
+      "score": 1
+    }
+  ]
+}

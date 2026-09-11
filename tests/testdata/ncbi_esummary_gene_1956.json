@@ -1,0 +1,26 @@
+{
+  "header": {
+    "type": "esummary",
+    "version": "0.3"
+  },
+  "result": {
+    "uids": [
+      "1956"
+    ],
+    "1956": {
+      "uid": "1956",
+      "name": "EGFR",
+      "description": "epidermal growth factor receptor",
+      "status": "",
+      "currentid": "",
+      "chromosome": "7",
+      "maplocation": "7p11.2",
+      "otheraliases": "ERBB, ERBB1, ERRP, HER1, NISBD2, NNCIS, PIG61, mENA",
+      "organism": {
+        "scientificname": "Homo sapiens",
+        "commonname": "human",
+        "taxid": 9606
+      }
+    }
+  }
+}

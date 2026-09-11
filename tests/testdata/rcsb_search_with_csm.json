@@ -1,0 +1,19 @@
+{
+  "query_id": "fixture-comp",
+  "result_type": "polymer_entity",
+  "total_count": 5,
+  "result_set": [
+    {
+      "identifier": "AF_AFP00533F1_1",
+      "score": 1
+    },
+    {
+      "identifier": "MA_MAT3VR3212_1",
+      "score": 1
+    },
+    {
+      "identifier": "1M17_1",
+      "score": 1
+    }
+  ]
+}

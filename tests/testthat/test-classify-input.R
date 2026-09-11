@@ -1,0 +1,11 @@
+test_that("target input is classified without treating text as identity", {
+  expect_equal(classify_target_input("EGFR"), "gene_symbol")
+  expect_equal(classify_target_input("met"), "gene_symbol")
+  expect_equal(classify_target_input("ENSG00000146648"), "ensembl_gene")
+  expect_equal(classify_target_input("ENSG00000146648.22"), "ensembl_gene")
+  expect_equal(classify_target_input("ENST00000275493.7"), "unknown")
+  expect_equal(classify_target_input("P00533"), "uniprot_accession")
+  expect_equal(classify_target_input("Q8TES7"), "uniprot_accession")
+  expect_equal(classify_target_input("not a gene at all!!!"), "unknown")
+  expect_equal(classify_target_input("   "), "unknown")
+})

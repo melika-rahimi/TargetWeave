@@ -1,0 +1,84 @@
+[
+  {
+    "dbId": 1236382,
+    "displayName": "Constitutive Signaling by Ligand-Responsive EGFR Cancer Variants",
+    "stId": "R-HSA-1236382",
+    "stIdVersion": "R-HSA-1236382.3",
+    "isInDisease": true,
+    "isInferred": false,
+    "maxDepth": 2,
+    "name": [
+      "Constitutive Signaling by Ligand-Responsive EGFR Cancer Variants"
+    ],
+    "releaseDate": "2011-12-06",
+    "speciesName": "Homo sapiens",
+    "hasDiagram": false,
+    "hasEHLD": false,
+    "lastUpdatedDate": "2023-06-07",
+    "schemaClass": "Pathway",
+    "className": "Pathway"
+  },
+  {
+    "dbId": 1257604,
+    "displayName": "PIP3 activates AKT signaling",
+    "stId": "R-HSA-1257604",
+    "stIdVersion": "R-HSA-1257604.14",
+    "isInDisease": false,
+    "isInferred": false,
+    "maxDepth": 5,
+    "name": [
+      "PIP3 activates AKT signaling",
+      "PI3K/AKT Signaling"
+    ],
+    "releaseDate": "2011-06-14",
+    "releaseStatus": "UPDATED",
+    "speciesName": "Homo sapiens",
+    "doi": "10.3180/R-HSA-1257604.14",
+    "hasDiagram": true,
+    "hasEHLD": false,
+    "lastUpdatedDate": "2023-06-07",
+    "schemaClass": "Pathway",
+    "className": "Pathway"
+  },
+  {
+    "dbId": 177929,
+    "displayName": "Signaling by EGFR",
+    "stId": "R-HSA-177929",
+    "stIdVersion": "R-HSA-177929.6",
+    "isInDisease": false,
+    "isInferred": false,
+    "maxDepth": 3,
+    "name": [
+      "Signaling by EGFR",
+      "Epidermal Growth Factor Receptor (EGFR) signaling"
+    ],
+    "releaseDate": "2007-02-20",
+    "speciesName": "Homo sapiens",
+    "doi": "10.3180/R-HSA-177929.5",
+    "hasDiagram": true,
+    "hasEHLD": false,
+    "lastUpdatedDate": "2023-03-29",
+    "schemaClass": "Pathway",
+    "className": "Pathway"
+  },
+  {
+    "dbId": 5673001,
+    "displayName": "RAF/MAP kinase cascade",
+    "stId": "R-HSA-5673001",
+    "stIdVersion": "R-HSA-5673001.12",
+    "isInDisease": false,
+    "isInferred": false,
+    "maxDepth": 4,
+    "name": [
+      "RAF/MAP kinase cascade"
+    ],
+    "releaseDate": "2015-06-17",
+    "speciesName": "Homo sapiens",
+    "doi": "10.3180/R-HSA-5673001.9",
+    "hasDiagram": true,
+    "hasEHLD": false,
+    "lastUpdatedDate": "2023-06-07",
+    "schemaClass": "Pathway",
+    "className": "Pathway"
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "entryType": "UniProtKB unreviewed (TrEMBL)",
+  "primaryAccession": "A0A0000000",
+  "organism": {
+    "scientificName": "Homo sapiens",
+    "taxonId": 9606
+  },
+  "proteinDescription": {
+    "recommendedName": {
+      "fullName": {
+        "value": "Uncharacterized protein"
+      }
+    }
+  },
+  "genes": [
+    {
+      "geneName": {
+        "value": "SPARSE"
+      }
+    }
+  ],
+  "sequence": {
+    "length": 80
+  }
+}

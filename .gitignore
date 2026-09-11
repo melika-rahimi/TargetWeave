@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Renviron
+.env
+renv/library/
+renv/staging/
+.DS_Store
+*.Rproj
+
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds

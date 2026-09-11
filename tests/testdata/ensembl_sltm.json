@@ -1,0 +1,12 @@
+{
+  "id": "ENSG00000137776",
+  "display_name": "SLTM",
+  "description": "SAFB like transcription modulator [Source:HGNC Symbol;Acc:HGNC:20709]",
+  "biotype": "protein_coding",
+  "seq_region_name": "15",
+  "start": 58879046,
+  "end": 58934012,
+  "strand": -1,
+  "species": "homo_sapiens",
+  "object_type": "Gene"
+}

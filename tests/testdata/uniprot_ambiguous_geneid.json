@@ -1,0 +1,77 @@
+{
+  "primaryAccession": "P00533",
+  "uniProtkbId": "EGFR_HUMAN",
+  "organism": {
+    "scientificName": "Homo sapiens",
+    "commonName": "Human",
+    "taxonId": 9606,
+    "lineage": [
+      "Eukaryota",
+      "Metazoa",
+      "Chordata",
+      "Craniata",
+      "Vertebrata",
+      "Euteleostomi",
+      "Mammalia",
+      "Eutheria",
+      "Euarchontoglires",
+      "Primates",
+      "Haplorrhini",
+      "Catarrhini",
+      "Hominidae",
+      "Homo"
+    ]
+  },
+  "genes": [
+    {
+      "geneName": {
+        "evidences": [
+          {
+            "evidenceCode": "ECO:0000303",
+            "source": "PubMed",
+            "id": "32926474"
+          },
+          {
+            "evidenceCode": "ECO:0000312",
+            "source": "HGNC",
+            "id": "HGNC:3236"
+          }
+        ],
+        "value": "EGFR"
+      },
+      "synonyms": [
+        {
+          "value": "ERBB"
+        },
+        {
+          "value": "ERBB1"
+        },
+        {
+          "value": "HER1"
+        }
+      ]
+    }
+  ],
+  "uniProtKBCrossReferences": [
+    {
+      "database": "GeneID",
+      "id": "1956",
+      "properties": [
+        {
+          "key": "Description",
+          "value": "-"
+        }
+      ]
+    },
+    {
+      "database": "GeneID",
+      "id": "1957",
+      "properties": [
+        {
+          "key": "Description",
+          "value": "-"
+        }
+      ]
+    }
+  ]
+}

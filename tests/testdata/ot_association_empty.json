@@ -1,0 +1,22 @@
+{
+  "data": {
+    "meta": {
+      "name": "Open Targets GraphQL & REST API Beta",
+      "dataVersion": {"year": "26", "month": "06"},
+      "apiVersion": {"x": "26", "y": "6", "z": "3"}
+    },
+    "target": {
+      "id": "ENSG00000146648",
+      "approvedSymbol": "EGFR",
+      "direct": {"count": 0, "rows": []},
+      "inclusive": {"count": 0, "rows": []}
+    },
+    "disease": {
+      "id": "MONDO_0005233",
+      "name": "non-small cell lung carcinoma",
+      "description": "A group of lung cancers.",
+      "therapeuticAreas": [],
+      "clinicalEvidence": {"count": 0, "rows": []}
+    }
+  }
+}

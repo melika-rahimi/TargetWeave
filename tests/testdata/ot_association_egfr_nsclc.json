@@ -1,0 +1,98 @@
+{
+  "data": {
+    "meta": {
+      "name": "Open Targets GraphQL & REST API Beta",
+      "dataVersion": {"year": "26", "month": "06"},
+      "apiVersion": {"x": "26", "y": "6", "z": "3"}
+    },
+    "target": {
+      "id": "ENSG00000146648",
+      "approvedSymbol": "EGFR",
+      "direct": {
+        "count": 1,
+        "rows": [
+          {
+            "score": 0.8525670184292347,
+            "datatypeScores": [
+              {"id": "clinical", "score": 0.9959475193895682},
+              {"id": "genetic_literature", "score": 0.607930797611621},
+              {"id": "affected_pathway", "score": 0.8209966976180988},
+              {"id": "literature", "score": 0.9996573626545492},
+              {"id": "genetic_association", "score": 0.7464039237342681},
+              {"id": "somatic_mutation", "score": 0.8315878016229145},
+              {"id": "rna_expression", "score": 0},
+              {"id": "animal_model", "score": null}
+            ],
+            "datasourceScores": [
+              {"id": "clinical_precedence", "score": 0.9959475193895682},
+              {"id": "eva", "score": 0.7464039237342681},
+              {"id": "europepmc", "score": 0.9996573626545492}
+            ],
+            "disease": {"id": "MONDO_0005233", "name": "non-small cell lung carcinoma"}
+          }
+        ]
+      },
+      "inclusive": {
+        "count": 1,
+        "rows": [
+          {
+            "score": 0.9218179690478745,
+            "datatypeScores": [
+              {"id": "clinical", "score": 0.9997241409866119}
+            ],
+            "datasourceScores": [
+              {"id": "clinical_precedence", "score": 0.9997241409866119}
+            ],
+            "disease": {"id": "MONDO_0005233", "name": "non-small cell lung carcinoma"}
+          }
+        ]
+      }
+    },
+    "disease": {
+      "id": "MONDO_0005233",
+      "name": "non-small cell lung carcinoma",
+      "description": "A group of at least three distinct histological types of lung cancer.",
+      "therapeuticAreas": [
+        {"id": "OTAR_0000010", "name": "respiratory or thoracic disease"}
+      ],
+      "clinicalEvidence": {
+        "count": 1490,
+        "rows": [
+          {
+            "id": "row-1",
+            "score": 1,
+            "datasourceId": "clinical_precedence",
+            "datatypeId": "clinical",
+            "clinicalStage": "APPROVAL",
+            "drugFromSource": "osimertinib",
+            "drug": {"id": "CHEMBL3353410", "name": "OSIMERTINIB"},
+            "target": {"id": "ENSG00000146648", "approvedSymbol": "EGFR"},
+            "disease": {"id": "MONDO_0005233", "name": "non-small cell lung carcinoma"}
+          },
+          {
+            "id": "row-2",
+            "score": 1,
+            "datasourceId": "clinical_precedence",
+            "datatypeId": "clinical",
+            "clinicalStage": "PHASE_4",
+            "drugFromSource": "osimertinib",
+            "drug": {"id": "CHEMBL3353410", "name": "OSIMERTINIB"},
+            "target": {"id": "ENSG00000146648", "approvedSymbol": "EGFR"},
+            "disease": {"id": "MONDO_0005233", "name": "non-small cell lung carcinoma"}
+          },
+          {
+            "id": "row-3",
+            "score": 1,
+            "datasourceId": "clinical_precedence",
+            "datatypeId": "clinical",
+            "clinicalStage": "APPROVAL",
+            "drugFromSource": "gefitinib",
+            "drug": {"id": "CHEMBL939", "name": "GEFITINIB"},
+            "target": {"id": "ENSG00000146648", "approvedSymbol": "EGFR"},
+            "disease": {"id": "MONDO_0005233", "name": "non-small cell lung carcinoma"}
+          }
+        ]
+      }
+    }
+  }
+}

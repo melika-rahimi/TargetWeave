@@ -1,0 +1,26 @@
+Package: TargetWeave
+Title: Connected evidence for molecular target investigation
+Version: 0.1.0
+Authors@R: person("TargetWeave", role = c("aut", "cre"))
+Description: Persistent R Shiny research workspace for investigating
+    molecular targets in a disease context. Milestone 4 adds Open Targets
+    disease resolution and one-target disease-evidence profiles.
+License: MIT
+Depends: R (>= 4.3.0)
+Imports:
+    shiny,
+    bslib,
+    DBI,
+    RPostgres,
+    pool,
+    sodium,
+    uuid,
+    httr2,
+    jsonlite,
+    ggplot2
+Suggests:
+    testthat (>= 3.0.0)
+Encoding: UTF-8
+Language: en-US
+RoxygenNote: 7.3.2
+Config/testthat/edition: 3

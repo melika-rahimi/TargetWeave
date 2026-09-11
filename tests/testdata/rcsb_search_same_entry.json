@@ -1,0 +1,15 @@
+{
+  "query_id": "fixture-dup",
+  "result_type": "polymer_entity",
+  "total_count": 2,
+  "result_set": [
+    {
+      "identifier": "1ABC_1",
+      "score": 1
+    },
+    {
+      "identifier": "1ABC_2",
+      "score": 1
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Development PostgreSQL only. Do not use these defaults in production.
+# Set POSTGRES_PASSWORD in the environment. The fallback "change-me" is local-only.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-targetweave}
+      POSTGRES_USER: ${POSTGRES_USER:-targetweave}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - targetweave_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-targetweave} -d ${POSTGRES_DB:-targetweave}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  targetweave_pgdata:

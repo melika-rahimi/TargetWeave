@@ -1,0 +1,24 @@
+{
+  "header": {
+    "type": "esummary",
+    "version": "0.3"
+  },
+  "result": {
+    "uids": [
+      "13649"
+    ],
+    "13649": {
+      "uid": "13649",
+      "name": "Egfr",
+      "description": "epidermal growth factor receptor",
+      "status": "",
+      "currentid": "",
+      "otheraliases": "9030024J15Rik, Erbb, Errb1, Errp, Wa5, wa-2, wa2",
+      "organism": {
+        "scientificname": "Mus musculus",
+        "commonname": "house mouse",
+        "taxid": 10090
+      }
+    }
+  }
+}

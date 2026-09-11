@@ -1,0 +1,127 @@
+{
+  "primaryAccession": "P00533",
+  "uniProtkbId": "EGFR_HUMAN",
+  "organism": {
+    "scientificName": "Homo sapiens",
+    "commonName": "Human",
+    "taxonId": 9606,
+    "lineage": [
+      "Eukaryota",
+      "Metazoa",
+      "Chordata",
+      "Craniata",
+      "Vertebrata",
+      "Euteleostomi",
+      "Mammalia",
+      "Eutheria",
+      "Euarchontoglires",
+      "Primates",
+      "Haplorrhini",
+      "Catarrhini",
+      "Hominidae",
+      "Homo"
+    ]
+  },
+  "genes": [
+    {
+      "geneName": {
+        "evidences": [
+          {
+            "evidenceCode": "ECO:0000303",
+            "source": "PubMed",
+            "id": "32926474"
+          },
+          {
+            "evidenceCode": "ECO:0000312",
+            "source": "HGNC",
+            "id": "HGNC:3236"
+          }
+        ],
+        "value": "EGFR"
+      },
+      "synonyms": [
+        {
+          "value": "ERBB"
+        },
+        {
+          "value": "ERBB1"
+        },
+        {
+          "value": "HER1"
+        }
+      ]
+    }
+  ],
+  "uniProtKBCrossReferences": [
+    {
+      "database": "GeneID",
+      "id": "1956",
+      "properties": [
+        {
+          "key": "Description",
+          "value": "-"
+        }
+      ]
+    },
+    {
+      "database": "Ensembl",
+      "id": "ENST00000275493.7",
+      "properties": [
+        {
+          "key": "ProteinId",
+          "value": "ENSP00000275493.2"
+        },
+        {
+          "key": "GeneId",
+          "value": "ENSG00000146648.22"
+        }
+      ],
+      "isoformId": "P00533-1"
+    },
+    {
+      "database": "Ensembl",
+      "id": "ENST00000342916.7",
+      "properties": [
+        {
+          "key": "ProteinId",
+          "value": "ENSP00000342376.3"
+        },
+        {
+          "key": "GeneId",
+          "value": "ENSG00000146648.22"
+        }
+      ],
+      "isoformId": "P00533-4"
+    },
+    {
+      "database": "Ensembl",
+      "id": "ENST00000344576.7",
+      "properties": [
+        {
+          "key": "ProteinId",
+          "value": "ENSP00000345973.2"
+        },
+        {
+          "key": "GeneId",
+          "value": "ENSG00000146648.22"
+        }
+      ],
+      "isoformId": "P00533-3"
+    },
+    {
+      "database": "Ensembl",
+      "id": "ENST00000420316.6",
+      "properties": [
+        {
+          "key": "ProteinId",
+          "value": "ENSP00000413843.2"
+        },
+        {
+          "key": "GeneId",
+          "value": "ENSG00000146648.22"
+        }
+      ],
+      "isoformId": "P00533-2"
+    }
+  ]
+}

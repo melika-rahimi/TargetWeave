@@ -1,0 +1,13 @@
+{
+  "data": {
+    "search": {
+      "total": 0,
+      "hits": []
+    },
+    "meta": {
+      "name": "Open Targets GraphQL & REST API Beta",
+      "dataVersion": {"year": "26", "month": "06"},
+      "apiVersion": {"x": "26", "y": "6", "z": "3"}
+    }
+  }
+}

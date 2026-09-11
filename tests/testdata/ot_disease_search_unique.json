@@ -1,0 +1,45 @@
+{
+  "data": {
+    "search": {
+      "total": 3,
+      "hits": [
+        {
+          "id": "MONDO_0005233",
+          "name": "non-small cell lung carcinoma",
+          "entity": "disease",
+          "score": 3827.2,
+          "description": "NSCLC",
+          "object": {
+            "id": "MONDO_0005233",
+            "name": "non-small cell lung carcinoma",
+            "synonyms": [
+              {
+                "relation": "hasExactSynonym",
+                "terms": ["NSCLC", "non-small cell lung cancer"]
+              }
+            ]
+          }
+        },
+        {
+          "id": "MONDO_0005097",
+          "name": "squamous cell lung carcinoma",
+          "entity": "disease",
+          "score": 180.0,
+          "description": "A NSCLC subtype."
+        },
+        {
+          "id": "ENSG00000146648",
+          "name": "EGFR",
+          "entity": "target",
+          "score": 195.0,
+          "description": null
+        }
+      ]
+    },
+    "meta": {
+      "name": "Open Targets GraphQL & REST API Beta",
+      "dataVersion": {"year": "26", "month": "06"},
+      "apiVersion": {"x": "26", "y": "6", "z": "3"}
+    }
+  }
+}

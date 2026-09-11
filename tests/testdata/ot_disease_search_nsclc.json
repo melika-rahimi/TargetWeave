@@ -1,0 +1,62 @@
+{
+  "data": {
+    "search": {
+      "total": 1544,
+      "hits": [
+        {
+          "id": "MONDO_0005233",
+          "name": "non-small cell lung carcinoma",
+          "entity": "disease",
+          "score": 1457.9,
+          "description": "A group of lung cancers including adenocarcinoma and squamous cell carcinoma.",
+          "object": {
+            "id": "MONDO_0005233",
+            "name": "non-small cell lung carcinoma",
+            "synonyms": [
+              {
+                "relation": "hasExactSynonym",
+                "terms": [
+                  "NSCLC",
+                  "non-small cell lung cancer",
+                  "non-small cell lung carcinoma"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "MONDO_0008433",
+          "name": "small cell lung carcinoma",
+          "entity": "disease",
+          "score": 1360.1,
+          "description": "An aggressive lung cancer of neuroendocrine origin.",
+          "object": {
+            "id": "MONDO_0008433",
+            "name": "small cell lung carcinoma",
+            "synonyms": [
+              {
+                "relation": "hasExactSynonym",
+                "terms": [
+                  "SCLC",
+                  "small cell lung cancer"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "ENSG00000249859",
+          "name": "PVT1",
+          "entity": "target",
+          "score": 195.6,
+          "description": null
+        }
+      ]
+    },
+    "meta": {
+      "name": "Open Targets GraphQL & REST API Beta",
+      "dataVersion": {"year": "26", "month": "06"},
+      "apiVersion": {"x": "26", "y": "6", "z": "3"}
+    }
+  }
+}

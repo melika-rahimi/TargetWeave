@@ -1,0 +1,7 @@
+{
+  "errors": [
+    {
+      "message": "Cannot query field \"nope\" on type \"Query\"."
+    }
+  ]
+}

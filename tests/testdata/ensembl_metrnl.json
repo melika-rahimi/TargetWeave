@@ -1,0 +1,12 @@
+{
+  "id": "ENSG00000176845",
+  "display_name": "METRNL",
+  "description": "meteorin like, glial cell differentiation regulator",
+  "biotype": "protein_coding",
+  "seq_region_name": "17",
+  "start": 81037713,
+  "end": 81053508,
+  "strand": -1,
+  "species": "homo_sapiens",
+  "object_type": "Gene"
+}

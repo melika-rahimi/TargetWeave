@@ -1,0 +1,12 @@
+{
+  "id": "ENSG00000105976",
+  "display_name": "MET",
+  "description": "MET proto-oncogene, receptor tyrosine kinase [Source:HGNC Symbol;Acc:HGNC:7029]",
+  "biotype": "protein_coding",
+  "seq_region_name": "7",
+  "start": 116672196,
+  "end": 116798386,
+  "strand": 1,
+  "species": "homo_sapiens",
+  "object_type": "Gene"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "ENSG00000146648",
+  "version": 22,
+  "display_name": "EGFR",
+  "description": "epidermal growth factor receptor [Source:HGNC Symbol;Acc:HGNC:3236]",
+  "biotype": "protein_coding",
+  "seq_region_name": "7",
+  "start": 55019017,
+  "end": 55211628,
+  "strand": 1,
+  "species": "homo_sapiens",
+  "object_type": "Gene"
+}

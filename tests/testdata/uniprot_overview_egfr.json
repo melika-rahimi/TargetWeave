@@ -1,0 +1,86 @@
+{
+  "entryType": "UniProtKB reviewed (Swiss-Prot)",
+  "primaryAccession": "P00533",
+  "uniProtkbId": "EGFR_HUMAN",
+  "organism": {
+    "scientificName": "Homo sapiens",
+    "taxonId": 9606
+  },
+  "proteinDescription": {
+    "recommendedName": {
+      "fullName": {
+        "value": "Epidermal growth factor receptor"
+      }
+    }
+  },
+  "genes": [
+    {
+      "geneName": {
+        "value": "EGFR"
+      }
+    }
+  ],
+  "comments": [
+    {
+      "commentType": "FUNCTION",
+      "texts": [
+        {
+          "value": "Receptor tyrosine kinase binding ligands of the EGF family and activating several signaling cascades to convert extracellular cues into appropriate cellular responses. Phosphorylates specific tyrosine residues in adapter proteins and other downstream targets, thereby initiating a network of signal transduction pathways. Isoform 2 may act as an antagonist of EGF action. Binding of ligands such as EGF and TGF-alpha to the extracellular domain of EGFR induces receptor dimerization, autophosphorylation, and internalization."
+        }
+      ]
+    },
+    {
+      "commentType": "FUNCTION",
+      "texts": [
+        {
+          "value": "Isoform 2 may act as an antagonist of EGF action."
+        }
+      ]
+    },
+    {
+      "commentType": "SUBCELLULAR LOCATION",
+      "subcellularLocations": [
+        {
+          "location": {
+            "value": "Cell membrane",
+            "evidences": [
+              {
+                "evidenceCode": "ECO:0000269",
+                "source": "PubMed",
+                "id": "17182860"
+              }
+            ]
+          },
+          "topology": {
+            "value": "Single-pass type I membrane protein"
+          }
+        },
+        {
+          "location": {
+            "value": "Nucleus"
+          }
+        }
+      ]
+    }
+  ],
+  "uniProtKBCrossReferences": [
+    {
+      "database": "Ensembl",
+      "id": "ENST00000275493.7",
+      "properties": [
+        {
+          "key": "GeneId",
+          "value": "ENSG00000146648.22"
+        }
+      ]
+    },
+    {
+      "database": "HGNC",
+      "id": "HGNC:3236"
+    }
+  ],
+  "sequence": {
+    "length": 1210,
+    "molWeight": 134277
+  }
+}

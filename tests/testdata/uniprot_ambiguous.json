@@ -1,0 +1,84 @@
+{
+  "results": [
+    {
+      "entryType": "UniProtKB reviewed (Swiss-Prot)",
+      "primaryAccession": "P08581",
+      "uniProtkbId": "MET_HUMAN",
+      "organism": {
+        "scientificName": "Homo sapiens",
+        "taxonId": 9606
+      },
+      "proteinDescription": {
+        "recommendedName": {
+          "fullName": {
+            "value": "Hepatocyte growth factor receptor"
+          }
+        }
+      },
+      "genes": [
+        {
+          "geneName": {
+            "value": "MET"
+          }
+        }
+      ],
+      "uniProtKBCrossReferences": [
+        {
+          "database": "Ensembl",
+          "id": "ENST00000397752",
+          "properties": [
+            {
+              "key": "GeneId",
+              "value": "ENSG00000105976"
+            }
+          ]
+        },
+        {
+          "database": "HGNC",
+          "id": "HGNC:7029"
+        }
+      ],
+      "sequence": {
+        "length": 1390
+      }
+    },
+    {
+      "entryType": "UniProtKB reviewed (Swiss-Prot)",
+      "primaryAccession": "Q8TES7",
+      "uniProtkbId": "FNDC5_HUMAN",
+      "organism": {
+        "scientificName": "Homo sapiens",
+        "taxonId": 9606
+      },
+      "proteinDescription": {
+        "recommendedName": {
+          "fullName": {
+            "value": "Fibronectin type III domain-containing protein 5"
+          }
+        }
+      },
+      "genes": [
+        {
+          "geneName": {
+            "value": "METRNL"
+          }
+        }
+      ],
+      "uniProtKBCrossReferences": [
+        {
+          "database": "Ensembl",
+          "id": "ENST00000368894",
+          "properties": [
+            {
+              "key": "GeneId",
+              "value": "ENSG00000176845"
+            }
+          ]
+        }
+      ],
+      "sequence": {
+        "length": 311
+      }
+    }
+  ]
+}

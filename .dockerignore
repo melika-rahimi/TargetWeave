@@ -1,0 +1,12 @@
+# Exclude secrets, local dumps, and developer libraries from images.
+.Renviron
+.env
+.git
+.Rproj.user
+renv/library
+renv/staging
+*.dump
+*.sql
+tests/testthat/_problems
+.DS_Store
+docs/*.png

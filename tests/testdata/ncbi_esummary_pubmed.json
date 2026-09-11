@@ -1,0 +1,109 @@
+{
+  "header": {
+    "type": "esummary",
+    "version": "0.3"
+  },
+  "result": {
+    "uids": [
+      "41593906",
+      "41543165"
+    ],
+    "41593906": {
+      "uid": "41593906",
+      "title": "Clinicopathological characteristics and therapeutic outcomes in patients with non-small cell lung cancer harboring SMARCA4 mutations.",
+      "pubdate": "2026 Dec",
+      "epubdate": "2026 Jan 27",
+      "source": "Ann Med",
+      "fulljournalname": "Annals of medicine",
+      "sortpubdate": "2026/12/01 00:00",
+      "sortfirstauthor": "Liu Y",
+      "authors": [
+        {
+          "name": "Liu Y",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Li H",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Li X",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Cui H",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Li R",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Zhu J",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Cui H",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Liu Y",
+          "authtype": "Author",
+          "clusterid": ""
+        },
+        {
+          "name": "Cheng Y",
+          "authtype": "Author",
+          "clusterid": ""
+        }
+      ],
+      "articleids": [
+        {
+          "idtype": "pubmed",
+          "idtypen": 1,
+          "value": "41593906"
+        },
+        {
+          "idtype": "pmc",
+          "idtypen": 8,
+          "value": "PMC12854217"
+        },
+        {
+          "idtype": "pmcid",
+          "idtypen": 5,
+          "value": "pmc-id: PMC12854217;"
+        },
+        {
+          "idtype": "doi",
+          "idtypen": 3,
+          "value": "10.1080/07853890.2026.2620201"
+        }
+      ]
+    },
+    "41543165": {
+      "uid": "41543165",
+      "title": "<p>Immunotherapy after EGFR\u2011TKI treatment in advanced non\u2011small cell lung cancer: Current status and future perspectives (Review)</p>.",
+      "pubdate": "2026 Mar",
+      "epubdate": "2026 Jan 16",
+      "source": "Oncol Rep",
+      "fulljournalname": "Oncology reports",
+      "sortpubdate": "2026/03/01 00:00",
+      "sortfirstauthor": "",
+      "authors": [],
+      "articleids": [
+        {
+          "idtype": "pubmed",
+          "idtypen": 1,
+          "value": "41543165"
+        }
+      ]
+    }
+  }
+}

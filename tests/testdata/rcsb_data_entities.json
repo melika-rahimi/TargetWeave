@@ -1,0 +1,311 @@
+{
+  "data": {
+    "polymer_entities": [
+      {
+        "rcsb_id": "1NQL_1",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "epidermal growth factor receptor",
+          "pdbx_mutation": null
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "A"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": [
+            "A"
+          ],
+          "asym_ids": [
+            "A"
+          ],
+          "entity_id": "1",
+          "entry_id": "1NQL",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "Structure of the extracellular domain of human epidermal growth factor (EGF) receptor in an inactive (low pH) complex with EGF."
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2003-01-21T00:00:00Z",
+            "initial_release_date": "2003-03-11T00:00:00Z"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": [
+              2.8
+            ],
+            "experimental_method": "X-ray",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "X-RAY DIFFRACTION"
+            }
+          ],
+          "nonpolymer_entities": [
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "HOH",
+                "name": "water"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "water"
+              }
+            },
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "NAG",
+                "name": "2-acetamido-2-deoxy-beta-D-glucopyranose"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "2-acetamido-2-deoxy-beta-D-glucopyranose"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "rcsb_id": "9NTP_1",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "Epidermal growth factor receptor",
+          "pdbx_mutation": null
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "A"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": [
+            "A"
+          ],
+          "asym_ids": [
+            "A"
+          ],
+          "entity_id": "1",
+          "entry_id": "9NTP",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "EGFR kinase domain (T790MV948R) in complex with a strain-release covalent inhibitor"
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2025-03-18T00:00:00Z",
+            "initial_release_date": "2026-07-29T00:00:00Z"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": [
+              1.55
+            ],
+            "experimental_method": "X-ray",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "X-RAY DIFFRACTION"
+            }
+          ],
+          "nonpolymer_entities": [
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "EDO",
+                "name": "1,2-ETHANEDIOL"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "1,2-ETHANEDIOL"
+              }
+            },
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "A1B6E",
+                "name": "N-[4-(3-chloro-4-fluoroanilino)-7-{[(3S)-oxolan-3-yl]oxy}quinazolin-6-yl]cyclobutanesulfonamide"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "N-[4-(3-chloro-4-fluoroanilino)-7-{[(3S)-oxolan-3-yl]oxy}quinazolin-6-yl]cyclobutanesulfonamide"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "rcsb_id": "2GS6_1",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "Epidermal growth factor receptor",
+          "pdbx_mutation": null
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "A"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": [
+            "A"
+          ],
+          "asym_ids": [
+            "A"
+          ],
+          "entity_id": "1",
+          "entry_id": "2GS6",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "Crystal Structure of the active EGFR kinase domain in complex with an ATP analog-peptide conjugate"
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2006-04-25T00:00:00Z",
+            "initial_release_date": "2006-06-20T00:00:00Z"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": [
+              2.6
+            ],
+            "experimental_method": "X-ray",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "X-RAY DIFFRACTION"
+            }
+          ],
+          "nonpolymer_entities": [
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "CL",
+                "name": "CHLORIDE ION"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "CHLORIDE ION"
+              }
+            },
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "112",
+                "name": "THIOPHOSPHORIC ACID O-((ADENOSYL-PHOSPHO)PHOSPHO)-S-ACETAMIDYL-DIESTER"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "THIOPHOSPHORIC ACID O-((ADENOSYL-PHOSPHO)PHOSPHO)-S-ACETAMIDYL-DIESTER"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "rcsb_id": "1M17_1",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "epidermal growth factor receptor",
+          "pdbx_mutation": null
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "A"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": [
+            "A"
+          ],
+          "asym_ids": [
+            "A"
+          ],
+          "entity_id": "1",
+          "entry_id": "1M17",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "Epidermal Growth Factor Receptor tyrosine kinase domain with 4-anilinoquinazoline inhibitor erlotinib"
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2002-06-17T00:00:00Z",
+            "initial_release_date": "2002-09-04T00:00:00Z"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": [
+              2.6
+            ],
+            "experimental_method": "X-ray",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "X-RAY DIFFRACTION"
+            }
+          ],
+          "nonpolymer_entities": [
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "AQ4",
+                "name": "[6,7-BIS(2-METHOXY-ETHOXY)QUINAZOLINE-4-YL]-(3-ETHYNYLPHENYL)AMINE"
+              },
+              "rcsb_nonpolymer_entity": {
+                "pdbx_description": "[6,7-BIS(2-METHOXY-ETHOXY)QUINAZOLINE-4-YL]-(3-ETHYNYLPHENYL)AMINE"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "rcsb_id": "1Z9I_1",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "Epidermal growth factor receptor",
+          "pdbx_mutation": null
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "A"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": [
+            "A"
+          ],
+          "asym_ids": [
+            "A"
+          ],
+          "entity_id": "1",
+          "entry_id": "1Z9I",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "A Structural Model for the Membrane-Bound Form of the Juxtamembrane Domain of the Epidermal Growth Factor Receptor"
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2005-04-01",
+            "initial_release_date": "2005-08-16"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": null,
+            "experimental_method": "NMR",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "SOLUTION NMR"
+            }
+          ],
+          "nonpolymer_entities": null
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "data": {
+    "polymer_entities": [
+      {
+        "rcsb_id": "1ABC_1",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "target copy 1",
+          "pdbx_mutation": "T790M"
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "A,B"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": ["A", "B"],
+          "entity_id": "1",
+          "entry_id": "1ABC",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "Synthetic multi-entity experimental entry"
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2001-01-01",
+            "initial_release_date": "2001-02-01"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": [3.1],
+            "experimental_method": "EM",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "ELECTRON MICROSCOPY"
+            }
+          ],
+          "nonpolymer_entities": [
+            {
+              "pdbx_entity_nonpoly": {
+                "comp_id": "HOH",
+                "name": "water"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "rcsb_id": "1ABC_2",
+        "rcsb_polymer_entity": {
+          "pdbx_description": "target copy 2",
+          "pdbx_mutation": null
+        },
+        "entity_poly": {
+          "pdbx_strand_id": "C"
+        },
+        "rcsb_polymer_entity_container_identifiers": {
+          "auth_asym_ids": ["C"],
+          "entity_id": "2",
+          "entry_id": "1ABC",
+          "reference_sequence_identifiers": [
+            {
+              "database_accession": "P00533",
+              "database_name": "UniProt"
+            }
+          ]
+        },
+        "entry": {
+          "struct": {
+            "title": "Synthetic multi-entity experimental entry"
+          },
+          "rcsb_accession_info": {
+            "deposit_date": "2001-01-01",
+            "initial_release_date": "2001-02-01"
+          },
+          "rcsb_entry_info": {
+            "resolution_combined": [3.1],
+            "experimental_method": "EM",
+            "structure_determination_methodology": "experimental"
+          },
+          "exptl": [
+            {
+              "method": "ELECTRON MICROSCOPY"
+            }
+          ],
+          "nonpolymer_entities": null
+        }
+      }
+    ]
+  }
+}

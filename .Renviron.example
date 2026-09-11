@@ -1,0 +1,30 @@
+# Copy this file to .Renviron for local development.
+# Never commit your real .Renviron file.
+
+TW_ENV=development
+
+PGHOST=127.0.0.1
+PGPORT=5432
+PGDATABASE=targetweave
+PGUSER=targetweave
+PGPASSWORD=change-me
+PGSSLMODE=disable
+
+# NCBI E-utilities identity (do not use a signed-in researcher's email).
+NCBI_TOOL=TargetWeave
+NCBI_EMAIL=maintainer@example.org
+# NCBI_API_KEY=
+
+# Optional UniProt User-Agent contact.
+UNIPROT_CONTACT_EMAIL=targetweave@localhost
+
+# HTTP timeout in seconds for external scientific APIs.
+# TW_HTTP_TIMEOUT=20
+
+# Human-facing timestamps (snapshots, notes, dossier). Stored values stay UTC.
+# Default display timezone is UTC. Local development may set this explicitly:
+# TW_DISPLAY_TZ=Europe/Amsterdam
+
+# Automated tests use schema tw_test in the same database when TESTTHAT=true.
+# Never set TW_ENV=production in the test process.
+# TW_TEST_SCHEMA=tw_test

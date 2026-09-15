@@ -6,6 +6,7 @@ snapshot_json <- function(value) {
     value,
     auto_unbox = TRUE,
     null = "null",
+    na = "null",
     digits = NA,
     POSIXt = "ISO8601"
   ))

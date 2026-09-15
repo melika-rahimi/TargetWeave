@@ -91,7 +91,7 @@ export_format_when <- function(value) {
 }
 
 export_format_score <- function(value) {
-  num <- suppressWarnings(as.numeric(value))
+  num <- export_scalar_num(value)
   if (length(num) != 1L || is.na(num)) {
     return("Unavailable")
   }
@@ -102,6 +102,7 @@ export_embed_plot <- function(plot, width = 7.2, height = 3.2, alt = "", caption
   if (is.null(plot)) {
     return("")
   }
+  started <- proc.time()[["elapsed"]]
   path <- tempfile(fileext = ".png")
   on.exit(unlink(path), add = TRUE)
   ok <- tryCatch({
@@ -120,10 +121,27 @@ export_embed_plot <- function(plot, width = 7.2, height = 3.2, alt = "", caption
     return("")
   }
   raw <- readBin(path, what = "raw", n = file.info(path)$size)
-  uri <- sprintf(
-    "data:image/png;base64,%s",
-    gsub("\\s+", "", jsonlite::base64_enc(raw))
-  )
+  metrics <- getOption("tw.export.metrics")
+  if (is.environment(metrics)) {
+    elapsed_ms <- 1000 * (proc.time()[["elapsed"]] - started)
+    b64 <- gsub("\\s+", "", jsonlite::base64_enc(raw))
+    metrics$plot_ms <- metrics$plot_ms + elapsed_ms
+    metrics$plot_n <- metrics$plot_n + 1L
+    metrics$plot_bytes <- metrics$plot_bytes + length(raw)
+    metrics$plot_b64_bytes <- metrics$plot_b64_bytes + nchar(b64, type = "bytes")
+    metrics$plots[[length(metrics$plots) + 1L]] <- list(
+      name = as.character(alt %||% ""),
+      width_in = width,
+      height_in = height,
+      dpi = 120,
+      elapsed_ms = as.integer(round(elapsed_ms)),
+      raw_bytes = length(raw),
+      base64_bytes = nchar(b64, type = "bytes")
+    )
+  } else {
+    b64 <- gsub("\\s+", "", jsonlite::base64_enc(raw))
+  }
+  uri <- sprintf("data:image/png;base64,%s", b64)
   cap <- if (has_display_text(caption)) {
     sprintf("<figcaption>%s</figcaption>", html_esc(caption))
   } else {
@@ -482,11 +500,11 @@ render_pathways_html <- function(snapshot) {
   }
   model <- section$model
   mat <- model$membership_matrix
-  order <- if (!is.null(mat) && nrow(mat) > 0) unique(as.character(mat$pathway_name)) else character()
+  capped <- snapshot_pathway_plot_matrix(mat)
   plot <- export_embed_plot(
-    plot_pathway_membership_matrix(mat, order),
+    plot_pathway_membership_matrix(capped$matrix, capped$pathway_order),
     width = 7.4,
-    height = max(3.2, min(8, 0.35 * length(order) + 1.6)),
+    height = max(3.2, min(8, 0.35 * length(capped$pathway_order) + 1.6)),
     alt = "Reactome pathway membership matrix",
     caption = "Filled marker = membership present; dash = not present in the retrieved membership set. This is not enrichment."
   )
@@ -829,16 +847,85 @@ write_export_zip <- function(source_dir, zip_path) {
   zip_path
 }
 
+export_safe_error_text <- function(err) {
+  text <- tryCatch(conditionMessage(err), error = function(e) class(err)[[1]])
+  text <- as.character(text %||% "")[[1]]
+  text <- gsub("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}", "[redacted]", text)
+  text <- gsub("[\r\n\t]+", " ", text)
+  substr(trimws(text), 1L, 200L)
+}
+
+export_file_bytes <- function(path) {
+  info <- tryCatch(file.info(path)$size, error = function(e) NA_real_)
+  if (length(info) != 1L || is.na(info)) {
+    return(NA_integer_)
+  }
+  as.integer(info)
+}
+
+tw_export_log <- function(event, snapshot_id, export_type, ..., level = "info") {
+  if (!exists("tw_log", mode = "function", inherits = TRUE)) {
+    return(invisible(FALSE))
+  }
+  tw_log(
+    event,
+    level = level,
+    snapshot_id = as.character(snapshot_id %||% ""),
+    export_type = as.character(export_type %||% ""),
+    ...
+  )
+}
+
+with_export_phase <- function(snapshot_id, export_type, phase, expr) {
+  started <- proc.time()[["elapsed"]]
+  result <- force(expr)
+  tw_export_log(
+    "export_phase_finished",
+    snapshot_id,
+    export_type,
+    phase = phase,
+    elapsed_ms = as.integer(round(1000 * (proc.time()[["elapsed"]] - started)))
+  )
+  result
+}
+
+new_export_metrics <- function() {
+  env <- new.env(parent = emptyenv())
+  env$plot_ms <- 0
+  env$plot_n <- 0L
+  env$plot_bytes <- 0
+  env$plot_b64_bytes <- 0
+  env$plots <- list()
+  env
+}
+
 build_snapshot_export_package <- function(
   snapshot,
   dest_dir,
   include_notes = TRUE,
   notes = list(),
   researcher = NULL,
-  generated_at = Sys.time()
+  generated_at = Sys.time(),
+  snapshot_id = NULL,
+  export_type = "html"
 ) {
+  snapshot_id <- snapshot_id %||% snapshot$id
   dir.create(dest_dir, recursive = TRUE, showWarnings = FALSE)
-  snap <- export_hydrate_snapshot(snapshot)
+  snap <- with_export_phase(snapshot_id, export_type, "hydrate_snapshot", {
+    export_hydrate_snapshot(snapshot)
+  })
+  tables <- with_export_phase(snapshot_id, export_type, "normalize_tables", {
+    if (identical(export_type, "zip")) {
+      write_export_tables(snap, file.path(dest_dir, "tables"))
+    } else {
+      list()
+    }
+  })
+  metrics <- new_export_metrics()
+  old_metrics <- getOption("tw.export.metrics")
+  options(tw.export.metrics = metrics)
+  on.exit(options(tw.export.metrics = old_metrics), add = TRUE)
+  html_started <- proc.time()[["elapsed"]]
   manifest <- build_export_manifest(
     snap,
     generated_at = generated_at,
@@ -853,8 +940,25 @@ build_snapshot_export_package <- function(
   )
   writeLines(html, file.path(dest_dir, "report.html"), useBytes = TRUE)
   write_export_manifest_files(dest_dir, manifest)
-  write_export_tables(snap, file.path(dest_dir, "tables"))
-  invisible(list(dir = dest_dir, manifest = manifest, html = html))
+  html_ms <- as.integer(round(1000 * (proc.time()[["elapsed"]] - html_started)))
+  tw_export_log(
+    "export_phase_finished",
+    snapshot_id,
+    export_type,
+    phase = "build_plots",
+    elapsed_ms = as.integer(round(metrics$plot_ms)),
+    plot_count = as.integer(metrics$plot_n),
+    plot_bytes = as.integer(metrics$plot_bytes),
+    plot_b64_bytes = as.integer(metrics$plot_b64_bytes)
+  )
+  tw_export_log(
+    "export_phase_finished",
+    snapshot_id,
+    export_type,
+    phase = "render_html",
+    elapsed_ms = html_ms
+  )
+  invisible(list(dir = dest_dir, manifest = manifest, html = html, tables = tables, metrics = metrics))
 }
 
 export_snapshot_artifact <- function(
@@ -866,26 +970,65 @@ export_snapshot_artifact <- function(
   generated_at = Sys.time()
 ) {
   format <- match.arg(format)
+  snapshot_id <- snapshot$id %||% ""
+  started <- proc.time()[["elapsed"]]
+  tw_export_log("export_started", snapshot_id, format)
   work <- tempfile("tw-export-")
   dir.create(work)
   on.exit(unlink(work, recursive = TRUE), add = TRUE)
-  built <- build_snapshot_export_package(
-    snapshot,
-    work,
-    include_notes = include_notes,
-    notes = notes,
-    researcher = researcher,
-    generated_at = generated_at
+  result <- tryCatch(
+    {
+      built <- build_snapshot_export_package(
+        snapshot,
+        work,
+        include_notes = include_notes,
+        notes = notes,
+        researcher = researcher,
+        generated_at = generated_at,
+        snapshot_id = snapshot_id,
+        export_type = format
+      )
+      stem <- export_safe_stem(snapshot$name, snapshot$created_at)
+      if (identical(format, "html")) {
+        path <- tempfile(pattern = paste0(stem, "_"), fileext = ".html")
+        file.copy(file.path(work, "report.html"), path, overwrite = TRUE)
+      } else {
+        path <- tempfile(pattern = paste0(stem, "_"), fileext = ".zip")
+        write_export_zip(work, path)
+      }
+      bytes <- with_export_phase(snapshot_id, format, "finalize_download", {
+        export_file_bytes(path)
+      })
+      tw_export_log(
+        "export_finished",
+        snapshot_id,
+        format,
+        elapsed_ms = as.integer(round(1000 * (proc.time()[["elapsed"]] - started))),
+        file_bytes = bytes
+      )
+      list(
+        ok = TRUE,
+        path = path,
+        filename = paste0(stem, if (identical(format, "html")) ".html" else ".zip"),
+        manifest = built$manifest,
+        file_bytes = bytes,
+        metrics = built$metrics
+      )
+    },
+    error = function(e) {
+      tw_export_log(
+        "export_failed",
+        snapshot_id,
+        format,
+        level = "error",
+        error_class = class(e)[[1]],
+        error_safe = export_safe_error_text(e),
+        elapsed_ms = as.integer(round(1000 * (proc.time()[["elapsed"]] - started)))
+      )
+      list(ok = FALSE, error = "The export could not be generated.")
+    }
   )
-  stem <- export_safe_stem(snapshot$name, snapshot$created_at)
-  if (identical(format, "html")) {
-    path <- tempfile(pattern = paste0(stem, "_"), fileext = ".html")
-    file.copy(file.path(work, "report.html"), path, overwrite = TRUE)
-    return(list(ok = TRUE, path = path, filename = paste0(stem, ".html"), manifest = built$manifest))
-  }
-  path <- tempfile(pattern = paste0(stem, "_"), fileext = ".zip")
-  write_export_zip(work, path)
-  list(ok = TRUE, path = path, filename = paste0(stem, ".zip"), manifest = built$manifest)
+  result
 }
 
 export_owned_snapshot <- function(
@@ -898,37 +1041,40 @@ export_owned_snapshot <- function(
   generated_at = Sys.time()
 ) {
   format <- match.arg(format)
-  snapshot <- get_owned_snapshot(db_pool, snapshot_id, user_id)
-  if (is.null(snapshot)) {
-    return(list(ok = FALSE, error = "Snapshot was not found or you do not have access to it."))
-  }
-  snapshot <- export_hydrate_snapshot(snapshot)
-  notes <- list()
-  if (isTRUE(include_notes)) {
-    notes <- collect_export_notes(db_pool, snapshot, user_id)
-  }
-  researcher <- NULL
-  if (isTRUE(include_researcher)) {
-    researcher <- export_researcher_fields(load_user_by_id(db_pool, user_id))
-  }
   result <- tryCatch(
-    export_snapshot_artifact(
-      snapshot,
-      format = format,
-      include_notes = include_notes,
-      notes = notes,
-      researcher = researcher,
-      generated_at = generated_at
-    ),
-    error = function(e) {
-      if (exists("tw_log", mode = "function", inherits = TRUE)) {
-        tw_log("export_failed", level = "error")
+    {
+      snapshot <- get_owned_snapshot(db_pool, snapshot_id, user_id)
+      if (is.null(snapshot)) {
+        return(list(ok = FALSE, error = "Snapshot was not found or you do not have access to it."))
       }
+      notes <- list()
+      if (isTRUE(include_notes)) {
+        notes <- collect_export_notes(db_pool, snapshot, user_id)
+      }
+      researcher <- NULL
+      if (isTRUE(include_researcher)) {
+        researcher <- export_researcher_fields(load_user_by_id(db_pool, user_id))
+      }
+      export_snapshot_artifact(
+        snapshot,
+        format = format,
+        include_notes = include_notes,
+        notes = notes,
+        researcher = researcher,
+        generated_at = generated_at
+      )
+    },
+    error = function(e) {
+      tw_export_log(
+        "export_failed",
+        snapshot_id,
+        format,
+        level = "error",
+        error_class = class(e)[[1]],
+        error_safe = export_safe_error_text(e)
+      )
       list(ok = FALSE, error = "The export could not be generated.")
     }
   )
-  if (!isTRUE(result$ok) && exists("tw_log", mode = "function", inherits = TRUE)) {
-    tw_log("export_failed", level = "error")
-  }
   result
 }

@@ -530,6 +530,22 @@ section_status_display <- function(section) {
   capture_status_label(status)
 }
 
+json_cell_to_scalar <- function(value) {
+  if (is.null(value) || length(value) == 0) {
+    return(NA)
+  }
+  if (is.list(value) && !is.data.frame(value)) {
+    if (length(value) != 1L) {
+      return(NA)
+    }
+    return(json_cell_to_scalar(value[[1]]))
+  }
+  if (length(value) != 1L) {
+    return(NA)
+  }
+  value
+}
+
 json_rows_to_df <- function(rows) {
   if (is.null(rows) || length(rows) == 0) {
     return(NULL)
@@ -545,12 +561,28 @@ json_rows_to_df <- function(rows) {
       if (!is.null(names(rows)) && !is.null(rows[[1]]) && !is.list(rows[[1]])) {
         return(as.data.frame(rows, stringsAsFactors = FALSE))
       }
-      do.call(rbind, lapply(rows, function(row) {
+      row_list <- lapply(rows, function(row) {
         if (is.data.frame(row)) {
           return(row)
         }
-        as.data.frame(row, stringsAsFactors = FALSE)
-      }))
+        if (!is.list(row)) {
+          return(NULL)
+        }
+        as.data.frame(lapply(row, json_cell_to_scalar), stringsAsFactors = FALSE)
+      })
+      row_list <- row_list[!vapply(row_list, is.null, logical(1))]
+      if (length(row_list) == 0L) {
+        return(NULL)
+      }
+      keys <- unique(unlist(lapply(row_list, names), use.names = FALSE))
+      aligned <- lapply(row_list, function(df) {
+        missing <- setdiff(keys, names(df))
+        for (key in missing) {
+          df[[key]] <- NA
+        }
+        df[, keys, drop = FALSE]
+      })
+      do.call(rbind, aligned)
     },
     error = function(e) NULL
   )

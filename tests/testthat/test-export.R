@@ -461,3 +461,135 @@ test_that("snapshot view has export actions and live research list does not", {
   expect_match(research, "export_owned_snapshot")
   expect_false(grepl("httr2", research))
 })
+
+test_that("export numeric helpers keep missing values without coercion warnings", {
+  expect_identical(export_scalar_num(NULL), NA_real_)
+  expect_identical(export_scalar_num(list()), NA_real_)
+  expect_identical(export_scalar_num(list(NULL)), NA_real_)
+  expect_identical(export_scalar_num(NA), NA_real_)
+  expect_identical(export_scalar_num(NA_real_), NA_real_)
+  expect_identical(export_scalar_num("NA"), NA_real_)
+  expect_identical(export_scalar_num("null"), NA_real_)
+  expect_identical(export_scalar_num(""), NA_real_)
+  expect_identical(export_scalar_num("Not provided"), NA_real_)
+  expect_identical(export_scalar_num(0), 0)
+  expect_identical(export_scalar_num("0.81"), 0.81)
+  expect_identical(export_scalar_num(list(0.21)), 0.21)
+  expect_no_warning({
+    expect_identical(export_scalar_num("NA"), NA_real_)
+    expect_identical(export_scalar_num("Not provided"), NA_real_)
+  })
+  expect_identical(csv_score(c(0, NA_real_, "NA", "0.5")), c(0, NA_real_, NA_real_, 0.5))
+})
+
+test_that("json_rows_to_df keeps omitted and JSON-null numeric cells as NA, not 0", {
+  omitted <- jsonlite::fromJSON(
+    '[{"symbol":"EGFR","score":0.8},{"symbol":"KRAS"}]',
+    simplifyVector = FALSE
+  )
+  df_omitted <- json_rows_to_df(omitted)
+  expect_equal(df_omitted$symbol, c("EGFR", "KRAS"))
+  expect_equal(df_omitted$score[[1]], 0.8)
+  expect_true(is.na(df_omitted$score[[2]]))
+  expect_false(identical(df_omitted$score[[2]], 0))
+
+  with_null <- jsonlite::fromJSON(
+    '[{"symbol":"EGFR","score":0.8},{"symbol":"KRAS","score":null}]',
+    simplifyVector = FALSE
+  )
+  df_null <- json_rows_to_df(with_null)
+  expect_true(is.na(df_null$score[[2]]))
+  expect_false(any(df_null$score == 0, na.rm = TRUE))
+})
+
+test_that("HTML export uses frozen snapshot data only", {
+  files <- c(
+    "R/export/export_dossier.R",
+    "R/export/export_tables.R",
+    "R/export/export_manifest.R",
+    "R/modules/mod_research.R"
+  )
+  for (rel in files) {
+    src <- paste(readLines(file.path(app_root(), rel), warn = FALSE), collapse = "\n")
+    expect_false(grepl("httr2::", src), info = rel)
+    expect_false(grepl("req_perform", src), info = rel)
+    expect_false(grepl("resolve_target_identity", src), info = rel)
+    expect_false(grepl("ot_search_diseases", src), info = rel)
+    expect_false(grepl("cache_put\\(", src), info = rel)
+  }
+})
+
+test_that("production-shaped four-target dossier renders without coercion warnings", {
+  snap <- production_like_export_snapshot(json_na = "string")
+  expect_equal(snap$overview$capture_status, "not_retrieved")
+  expect_equal(snap$disease_evidence$capture_status, "not_retrieved")
+  expect_equal(snap$comparison$capture_status, "captured")
+  expect_equal(snap$pathways$capture_status, "captured")
+  expect_equal(snap$literature$capture_status, "captured")
+  expect_equal(snap$structures$capture_status, "captured")
+  identity <- vapply(snap$target_identity$model$targets, function(row) {
+    as.character(row$display_symbol %||% row$input_text)
+  }, character(1))
+  expect_equal(sort(identity), c("EGFR", "KRAS", "MET", "TP53"))
+
+  expect_equal(nrow(snap$pathways$model$pathways), PATHWAY_MATRIX_ROW_CAP)
+  expect_equal(
+    length(unique(as.character(snap$pathways$model$membership_matrix$pathway_name))),
+    PATHWAY_MATRIX_ROW_CAP
+  )
+  expect_equal(length(snap$literature$model$targets), 4L)
+  expect_equal(nrow(snap$literature$model$targets[[1]]$recent_records), LITERATURE_RECENT_N)
+  expect_equal(length(snap$structures$model$targets), 4L)
+  expect_equal(length(snap$structures$model$targets[[1]]$records), STRUCTURE_COVERAGE_ROW_CAP)
+
+  expect_no_warning({
+    csv <- export_structures_csv(snap)
+  })
+  expect_equal(nrow(csv), 4L * STRUCTURE_COVERAGE_ROW_CAP)
+  expect_true(sum(is.na(csv$coverage_fraction)) >= 4L * 8L)
+  expect_false(any(csv$coverage_fraction == 0, na.rm = TRUE))
+  expect_true(any(!is.na(csv$coverage_fraction)))
+
+  cmp <- export_comparison_csv(snap)
+  expect_true(any(is.na(cmp$broader_score)))
+  expect_false(any(cmp$broader_score == 0, na.rm = TRUE))
+  expect_false(any(cmp$direct_score == 0, na.rm = TRUE))
+
+  result <- NULL
+  expect_no_warning({
+    result <- export_snapshot_artifact(snap, format = "html", include_notes = FALSE)
+  })
+  expect_true(result$ok)
+  expect_true(file.exists(result$path))
+  html <- paste(readLines(result$path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  unlink(result$path)
+  expect_match(html, "<html", ignore.case = TRUE)
+  expect_match(html, "EGFR")
+  expect_match(html, "KRAS")
+  expect_match(html, "MET")
+  expect_match(html, "TP53")
+  expect_match(html, "Not retrieved before snapshot capture.")
+  expect_match(html, "data:image/png;base64,")
+  expect_false(grepl("NAs introduced by coercion", html, fixed = TRUE))
+  expect_true(isTRUE(result$file_bytes > 0))
+  expect_equal(result$metrics$plot_n, 12L)
+})
+
+test_that("legacy string NA and JSON-null snapshots both export missing coverage as missing", {
+  for (mode in c("string", "null")) {
+    snap <- production_like_export_snapshot(json_na = mode)
+    csv <- NULL
+    result <- NULL
+    expect_no_warning({
+      csv <- export_structures_csv(snap)
+      result <- export_snapshot_artifact(snap, format = "html", include_notes = FALSE)
+    })
+    expect_true(result$ok, info = mode)
+    unlink(result$path)
+    expect_true(any(is.na(csv$coverage_fraction)), info = mode)
+    expect_false(any(csv$coverage_fraction == 0, na.rm = TRUE), info = mode)
+    inclusive <- export_comparison_csv(snap)$broader_score
+    expect_true(any(is.na(inclusive)), info = mode)
+    expect_false(any(inclusive == 0, na.rm = TRUE), info = mode)
+  }
+})

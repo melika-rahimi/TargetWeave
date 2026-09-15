@@ -29,19 +29,125 @@ export_safe_stem <- function(name, captured_at = Sys.time()) {
   sprintf("TargetWeave_%s_%s", raw, date)
 }
 
-csv_missing <- function(value) {
+json_unwrap_scalar <- function(value) {
   if (is.null(value) || length(value) == 0) {
-    return(NA_character_)
+    return(NULL)
   }
-  text <- as.character(value[[1]])
-  if (!nzchar(trimws(text)) || identical(text, "NA") || identical(text, "NULL")) {
-    return(NA_character_)
+  if (is.list(value) && !is.data.frame(value)) {
+    if (length(value) == 0L) {
+      return(NULL)
+    }
+    if (length(value) == 1L) {
+      return(json_unwrap_scalar(value[[1]]))
+    }
+  }
+  value
+}
+
+json_missing_text <- function(text) {
+  if (!nzchar(text)) {
+    return(TRUE)
+  }
+  lower <- tolower(text)
+  lower %in% c("na", "null", "nan", "n/a", "undefined")
+}
+
+export_scalar_chr <- function(value, default = NA_character_) {
+  value <- json_unwrap_scalar(value)
+  if (is.null(value) || length(value) == 0) {
+    return(default)
+  }
+  if (length(value) != 1L) {
+    value <- value[[1]]
+  }
+  if (is.null(value) || (length(value) == 1L && is.na(value))) {
+    return(default)
+  }
+  text <- trimws(as.character(value))
+  if (json_missing_text(text)) {
+    return(default)
   }
   text
 }
 
+export_scalar_num <- function(value) {
+  value <- json_unwrap_scalar(value)
+  if (is.null(value) || length(value) == 0) {
+    return(NA_real_)
+  }
+  if (length(value) != 1L) {
+    return(NA_real_)
+  }
+  if (is.numeric(value)) {
+    return(as.numeric(value))
+  }
+  if (is.logical(value)) {
+    if (is.na(value)) {
+      return(NA_real_)
+    }
+    return(NA_real_)
+  }
+  if (is.character(value) || is.factor(value)) {
+    text <- trimws(as.character(value))
+    if (json_missing_text(text)) {
+      return(NA_real_)
+    }
+    if (grepl("^-?[0-9]+(\\.[0-9]*)?([eE][+-]?[0-9]+)?$", text) ||
+        grepl("^-?\\.[0-9]+([eE][+-]?[0-9]+)?$", text)) {
+      parsed <- suppressWarnings(as.numeric(text))
+      if (length(parsed) == 1L && !is.na(parsed)) {
+        return(parsed)
+      }
+    }
+    return(NA_real_)
+  }
+  NA_real_
+}
+
+export_chr_vec <- function(value, n = NULL) {
+  if (is.null(value)) {
+    n <- n %||% 0L
+    return(rep(NA_character_, n))
+  }
+  if (is.null(n)) {
+    n <- length(value)
+  }
+  if (n <= 0L) {
+    return(character())
+  }
+  vapply(seq_len(n), function(i) {
+    if (i > length(value)) {
+      return(NA_character_)
+    }
+    export_scalar_chr(value[[i]])
+  }, character(1))
+}
+
+export_num_vec <- function(value, n = NULL) {
+  if (is.null(value)) {
+    n <- n %||% 0L
+    return(rep(NA_real_, n))
+  }
+  if (is.null(n)) {
+    n <- length(value)
+  }
+  if (n <= 0L) {
+    return(numeric())
+  }
+  vapply(seq_len(n), function(i) {
+    if (i > length(value)) {
+      return(NA_real_)
+    }
+    export_scalar_num(value[[i]])
+  }, numeric(1))
+}
+
+csv_missing <- function(value) {
+  export_scalar_chr(value)
+}
+
 csv_score <- function(value) {
-  suppressWarnings(as.numeric(value))
+  export_num_vec(value)
 }
 
 write_export_csv <- function(path, data) {
@@ -101,15 +207,19 @@ export_comparison_csv <- function(snapshot) {
   if (is.null(targets) || nrow(targets) == 0) {
     return(NULL)
   }
+  n <- nrow(targets)
   data.frame(
-    target = as.character(targets$symbol),
-    direct_score = csv_score(targets$overall_direct_score),
+    target = export_chr_vec(targets$symbol, n),
+    direct_score = export_num_vec(targets$overall_direct_score, n),
     broader_score = if ("overall_inclusive_score" %in% names(targets)) {
-      csv_score(targets$overall_inclusive_score)
+      export_num_vec(targets$overall_inclusive_score, n)
     } else {
-      NA_real_
+      rep(NA_real_, n)
     },
-    retrieval_status = as.character(targets$retrieval_status %||% targets$cache_status %||% ""),
+    retrieval_status = export_chr_vec(
+      targets$retrieval_status %||% targets$cache_status,
+      n
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -127,8 +237,13 @@ export_pathways_csv <- function(snapshot) {
     rows <- unique(mat[, c("pathway_id", "pathway_name"), drop = FALSE])
     rows$matched_target_count <- NA_integer_
   }
-  matched <- as.character(rows$matched_targets %||% NA_character_)
-  counts <- if ("matched_target_count" %in% names(rows)) as.integer(rows$matched_target_count) else NA_integer_
+  n_rows <- nrow(rows)
+  matched <- export_chr_vec(rows$matched_targets, n_rows)
+  counts <- if ("matched_target_count" %in% names(rows)) {
+    as.integer(export_num_vec(rows$matched_target_count, n_rows))
+  } else {
+    rep(NA_integer_, n_rows)
+  }
   if (!is.null(mat) && nrow(mat) > 0) {
     present <- mat[mat$is_member %in% TRUE, , drop = FALSE]
     if (nrow(present) > 0) {
@@ -170,14 +285,15 @@ export_literature_csv <- function(snapshot) {
     if (is.null(recs) || nrow(recs) == 0) {
       next
     }
+    n_rec <- nrow(recs)
     parts[[length(parts) + 1L]] <- data.frame(
-      target = as.character(item$target$symbol %||% ""),
-      pmid = as.character(recs$pmid %||% ""),
-      title = as.character(recs$title %||% ""),
-      first_author = if ("first_author" %in% names(recs)) as.character(recs$first_author) else NA_character_,
-      journal = if ("journal" %in% names(recs)) as.character(recs$journal) else NA_character_,
-      publication_date = if ("publication_date" %in% names(recs)) as.character(recs$publication_date) else NA_character_,
-      doi = if ("doi" %in% names(recs)) as.character(recs$doi) else NA_character_,
+      target = rep(export_scalar_chr(item$target$symbol, default = ""), n_rec),
+      pmid = export_chr_vec(recs$pmid, n_rec),
+      title = export_chr_vec(recs$title, n_rec),
+      first_author = if ("first_author" %in% names(recs)) export_chr_vec(recs$first_author, n_rec) else rep(NA_character_, n_rec),
+      journal = if ("journal" %in% names(recs)) export_chr_vec(recs$journal, n_rec) else rep(NA_character_, n_rec),
+      publication_date = if ("publication_date" %in% names(recs)) export_chr_vec(recs$publication_date, n_rec) else rep(NA_character_, n_rec),
+      doi = if ("doi" %in% names(recs)) export_chr_vec(recs$doi, n_rec) else rep(NA_character_, n_rec),
       stringsAsFactors = FALSE
     )
   }
@@ -194,15 +310,26 @@ export_structures_csv <- function(snapshot) {
   parts <- list()
   for (item in snapshot$structures$model$targets %||% list()) {
     for (rec in item$records %||% list()) {
+      chains <- rec$polymer_entity$chains %||% rec$chains %||% character()
+      if (is.list(chains)) {
+        chains <- vapply(chains, export_scalar_chr, character(1), default = "")
+        chains <- chains[nzchar(chains)]
+      } else {
+        chains <- export_chr_vec(chains)
+        chains <- chains[!is.na(chains) & nzchar(chains)]
+      }
       parts[[length(parts) + 1L]] <- data.frame(
-        target = as.character(item$target$symbol %||% ""),
-        pdb_id = as.character(rec$pdb_id %||% ""),
-      polymer_entity = as.character(rec$polymer_entity$entity_identifier %||% rec$polymer_entity$entity_id %||% ""),
-      chains = paste(as.character(rec$polymer_entity$chains %||% rec$chains %||% character()), collapse = ", "),
-        method = as.character(rec$experiment$method %||% NA_character_),
-        resolution_angstrom = as.character(rec$experiment$resolution_angstrom %||% NA_character_),
-        coverage_fraction = as.numeric(rec$coverage$coverage_fraction %||% NA_real_),
-        release_date = as.character(rec$entry$release_date %||% NA_character_),
+        target = export_scalar_chr(item$target$symbol, default = ""),
+        pdb_id = export_scalar_chr(rec$pdb_id, default = ""),
+        polymer_entity = export_scalar_chr(
+          rec$polymer_entity$entity_identifier %||% rec$polymer_entity$entity_id,
+          default = ""
+        ),
+        chains = paste(chains, collapse = ", "),
+        method = export_scalar_chr(rec$experiment$method),
+        resolution_angstrom = export_scalar_chr(rec$experiment$resolution_angstrom),
+        coverage_fraction = export_scalar_num(rec$coverage$coverage_fraction),
+        release_date = export_scalar_chr(rec$entry$release_date),
         stringsAsFactors = FALSE
       )
     }

@@ -98,63 +98,6 @@ export_format_score <- function(value) {
   sprintf("%.3f", num)
 }
 
-export_embed_plot <- function(plot, width = 7.2, height = 3.2, alt = "", caption = NULL) {
-  if (is.null(plot)) {
-    return("")
-  }
-  started <- proc.time()[["elapsed"]]
-  path <- tempfile(fileext = ".png")
-  on.exit(unlink(path), add = TRUE)
-  ok <- tryCatch({
-    ggplot2::ggsave(
-      filename = path,
-      plot = plot,
-      width = width,
-      height = height,
-      dpi = 120,
-      device = "png",
-      bg = "white"
-    )
-    file.exists(path) && isTRUE(file.info(path)$size > 0)
-  }, error = function(e) FALSE)
-  if (!isTRUE(ok)) {
-    return("")
-  }
-  raw <- readBin(path, what = "raw", n = file.info(path)$size)
-  metrics <- getOption("tw.export.metrics")
-  if (is.environment(metrics)) {
-    elapsed_ms <- 1000 * (proc.time()[["elapsed"]] - started)
-    b64 <- gsub("\\s+", "", jsonlite::base64_enc(raw))
-    metrics$plot_ms <- metrics$plot_ms + elapsed_ms
-    metrics$plot_n <- metrics$plot_n + 1L
-    metrics$plot_bytes <- metrics$plot_bytes + length(raw)
-    metrics$plot_b64_bytes <- metrics$plot_b64_bytes + nchar(b64, type = "bytes")
-    metrics$plots[[length(metrics$plots) + 1L]] <- list(
-      name = as.character(alt %||% ""),
-      width_in = width,
-      height_in = height,
-      dpi = 120,
-      elapsed_ms = as.integer(round(elapsed_ms)),
-      raw_bytes = length(raw),
-      base64_bytes = nchar(b64, type = "bytes")
-    )
-  } else {
-    b64 <- gsub("\\s+", "", jsonlite::base64_enc(raw))
-  }
-  uri <- sprintf("data:image/png;base64,%s", b64)
-  cap <- if (has_display_text(caption)) {
-    sprintf("<figcaption>%s</figcaption>", html_esc(caption))
-  } else {
-    ""
-  }
-  sprintf(
-    "<figure><img src=\"%s\" alt=\"%s\" />%s</figure>",
-    uri,
-    html_esc_attr(alt),
-    cap
-  )
-}
-
 export_html_table <- function(headers, rows, na_label = "Unavailable") {
   head <- paste(sprintf("<th>%s</th>", vapply(headers, html_esc, character(1))), collapse = "")
   body <- paste(vapply(rows, function(row) {
@@ -240,7 +183,18 @@ dossier_css <- function() {
       ".source-label { color: var(--muted); font-size: .9rem; }",
       "section { page-break-inside: avoid; }",
       "details.appendix { margin-top: 1rem; color: var(--muted); }",
-      "@media print { body { background:#fff; } main { margin:0; box-shadow:none; padding:0; max-width:none; } nav.toc, .no-print { display:none !important; } a { color: inherit; text-decoration: none; } h2, h3 { page-break-after: avoid; } img { break-inside: avoid; } }"
+      ".tw-bars { display:flex; flex-direction:column; gap:.35rem; margin:.4rem 0 .8rem; }",
+      ".tw-bar-row { display:grid; grid-template-columns: minmax(7rem, 28%) 1fr 4.2rem; gap:.45rem; align-items:center; }",
+      ".tw-bar-lab { font-size:.85rem; color:var(--ink); }",
+      ".tw-bar-track { display:block; height:.7rem; background:#E9EDF5; border:1px solid var(--line); }",
+      ".tw-bar-track.tw-bar-missing { background:#C5CDD8; }",
+      ".tw-bar-fill { display:block; height:100%; background:var(--navy); }",
+      ".tw-bar-val { font-size:.85rem; text-align:right; color:var(--muted); }",
+      "table.tw-heat td.tw-heat-cell, table.tw-heat td.tw-heat-missing, table.tw-matrix td { text-align:center; font-size:.85rem; }",
+      "table.tw-heat td.tw-heat-missing, table.tw-matrix td.tw-member-no { color:var(--muted); background:#C5CDD8; }",
+      "table.tw-matrix td.tw-member-yes { background:#E9EDF5; color:var(--navy); font-weight:700; }",
+      ".tw-svg { width:100%; height:auto; display:block; }",
+      "@media print { body { background:#fff; } main { margin:0; box-shadow:none; padding:0; max-width:none; } nav.toc, .no-print { display:none !important; } a { color: inherit; text-decoration: none; } h2, h3 { page-break-after: avoid; } img, .tw-viz { break-inside: avoid; } }"
     ),
     collapse = "\n"
   )
@@ -334,7 +288,7 @@ render_overview_html <- function(snapshot) {
   if (!export_section_has_content(section)) {
     return(dossier_empty_section_html("overview", "Target overview", section))
   }
-  blocks <- lapply(section$targets %||% list(), function(env) {
+  blocks <- lapply(export_reorder_section_targets(section$targets %||% list(), snapshot), function(env) {
     if (!export_section_has_content(env) || is.null(env$model)) {
       return(sprintf("<div>%s</div>", dossier_status_chip(env)))
     }
@@ -343,11 +297,7 @@ render_overview_html <- function(snapshot) {
     protein <- model$protein
     genomic <- model$genomic
     loc <- paste(as.character(protein$subcellular_locations %||% character()), collapse = "; ")
-    plot <- export_embed_plot(
-      plot_genomic_context(genomic, idn$symbol),
-      alt = sprintf("Genomic locus for %s", idn$symbol %||% "target"),
-      caption = "Genomic context from captured Ensembl coordinates. Source: Ensembl"
-    )
+    plot <- export_lite_genomic_html(genomic, idn$symbol)
     fn <- protein$function_readable %||% protein$function_preview %||% "Not provided"
     stale <- if (isTRUE(env$stale_at_capture)) "<p class=\"badge-stale\">Stale at capture</p>" else ""
     paste(
@@ -383,7 +333,7 @@ render_disease_html <- function(snapshot) {
   }
   disease_name <- ctx$disease_name %||% ctx$disease_label
   disease_id <- ctx$disease_ontology_id
-  blocks <- lapply(section$targets %||% list(), function(env) {
+  blocks <- lapply(export_reorder_section_targets(section$targets %||% list(), snapshot), function(env) {
     model <- env$model
     if (is.null(model)) {
       return(sprintf("<p>%s</p>", html_esc(section_status_display(env))))
@@ -391,11 +341,7 @@ render_disease_html <- function(snapshot) {
     assoc <- model$association
     scores <- assoc$datatype_scores
     plot <- if (!is.null(scores) && is.data.frame(scores) && nrow(scores) > 0) {
-      export_embed_plot(
-        plot_ot_evidence_profile(scores, model$target$symbol, model$disease$name %||% disease_name),
-        alt = sprintf("Open Targets data-type association scores for %s", model$target$symbol %||% "target"),
-        caption = "Open Targets data-type association scores. Numeric labels are the captured scores."
-      )
+      export_lite_ot_evidence_html(scores, model$target$symbol, model$disease$name %||% disease_name)
     } else {
       ""
     }
@@ -448,7 +394,8 @@ render_comparison_html <- function(snapshot) {
     return(dossier_empty_section_html("comparison", "Candidate comparison", section))
   }
   model <- section$model
-  targets <- model$targets
+  symbol_order <- export_project_symbol_order(snapshot)
+  targets <- export_reorder_symbol_df(model$targets, symbol_order)
   matrix <- model$datatype_matrix
   score_rows <- list()
   if (!is.null(targets) && nrow(targets) > 0) {
@@ -461,18 +408,8 @@ render_comparison_html <- function(snapshot) {
       )
     })
   }
-  heat <- export_embed_plot(
-    plot_ot_comparison_heatmap(matrix, model$disease$name),
-    width = 7.4,
-    height = 4.2,
-    alt = "Open Targets comparison heatmap of data-type association scores",
-    caption = "Missing values are shown as a dash, distinct from a returned score of zero. Source: Open Targets"
-  )
-  bars <- export_embed_plot(
-    plot_ot_overall_scores(targets),
-    alt = "Open Targets overall direct association scores by target",
-    caption = "Bars are sorted by Open Targets direct association score for display. This is not a recommendation or ranking."
-  )
+  heat <- export_lite_ot_heatmap_html(matrix, model$disease$name, symbol_order = symbol_order)
+  bars <- export_lite_ot_scores_html(targets, symbol_order = symbol_order)
   paste(
     c(
       "<section id=\"comparison\"><h2>Candidate comparison</h2>",
@@ -501,12 +438,10 @@ render_pathways_html <- function(snapshot) {
   model <- section$model
   mat <- model$membership_matrix
   capped <- snapshot_pathway_plot_matrix(mat)
-  plot <- export_embed_plot(
-    plot_pathway_membership_matrix(capped$matrix, capped$pathway_order),
-    width = 7.4,
-    height = max(3.2, min(8, 0.35 * length(capped$pathway_order) + 1.6)),
-    alt = "Reactome pathway membership matrix",
-    caption = "Filled marker = membership present; dash = not present in the retrieved membership set. This is not enrichment."
+  plot <- export_lite_pathway_html(
+    capped$matrix,
+    capped$pathway_order,
+    symbol_order = export_project_symbol_order(snapshot)
   )
   csv <- export_pathways_csv(snapshot)
   table <- ""
@@ -549,7 +484,9 @@ render_literature_html <- function(snapshot) {
     return(dossier_empty_section_html("literature", "Literature landscape", section))
   }
   model <- section$model
-  blocks <- lapply(model$targets %||% list(), function(item) {
+  blocks <- lapply(
+    export_reorder_by_symbols(model$targets %||% list(), export_project_symbol_order(snapshot)),
+    function(item) {
     recs <- item$recent_records
     rec_table <- ""
     if (!is.null(recs) && nrow(recs) > 0) {
@@ -574,11 +511,7 @@ render_literature_html <- function(snapshot) {
         sprintf("<p>Defined PubMed corpus count: %s</p>", html_esc(item$corpus$total_count %||% "Not provided")),
         sprintf("<p>Search definition: %s</p>", html_esc(item$corpus$disease_query %||% model$disease$disease_query %||% "Not provided")),
         sprintf("<p>NCBI GeneID: %s</p>", html_esc(item$target$ncbi_gene_id %||% "Not provided")),
-        export_embed_plot(
-          plot_publication_trend(item$trend),
-          alt = sprintf("Ten-year publication trend for %s", item$target$symbol),
-          caption = "Publication counts within this search definition. Source: NCBI PubMed"
-        ),
+        export_lite_trend_html(item$trend, item$target$symbol),
         rec_table
       ),
       collapse = "\n"
@@ -607,20 +540,16 @@ render_structures_html <- function(snapshot) {
     return(dossier_empty_section_html("structures", "Experimental structures", section))
   }
   model <- section$model
-  counts <- export_embed_plot(
-    plot_structure_entry_counts(model$summary),
-    alt = "Experimental PDB entry counts by target",
-    caption = "Experimental PDB entry counts from captured RCSB metadata. Source: RCSB PDB"
+  symbol_order <- export_project_symbol_order(snapshot)
+  summary <- export_reorder_symbol_df(model$summary, symbol_order)
+  counts <- export_lite_pdb_counts_html(summary)
+  coverage_plots <- lapply(
+    export_reorder_by_symbols(model$targets %||% list(), symbol_order),
+    function(item) {
+      length_aa <- item$uniprot_length %||% item$records[[1]]$coverage$uniprot_length
+      export_lite_coverage_html(item$records, length_aa, item$target$symbol)
+    }
   )
-  coverage_plots <- lapply(model$targets %||% list(), function(item) {
-    length_aa <- item$uniprot_length %||% item$records[[1]]$coverage$uniprot_length
-    export_embed_plot(
-      plot_structure_coverage(item$records, length_aa),
-      height = 3.6,
-      alt = sprintf("Sequence coverage of experimental structures for %s", item$target$symbol %||% "target"),
-      caption = sprintf("Sequence coverage for %s. Coordinate files are not embedded.", item$target$symbol %||% "target")
-    )
-  })
   csv <- export_structures_csv(snapshot)
   table <- ""
   if (!is.null(csv) && nrow(csv) > 0) {
@@ -635,7 +564,7 @@ render_structures_html <- function(snapshot) {
           csv$chains[[i]],
           csv$method[[i]],
           csv$resolution_angstrom[[i]],
-          csv$coverage_fraction[[i]],
+          export_format_coverage_pct(csv$coverage_fraction[[i]]),
           csv$release_date[[i]]
         )
       })
@@ -679,7 +608,36 @@ render_notes_html <- function(notes) {
 }
 
 render_provenance_html <- function(snapshot, manifest) {
-  rows <- lapply(snapshot$source_manifest %||% list(), function(row) {
+  entries <- snapshot$source_manifest %||% list()
+  if (length(entries) > 0L) {
+    identities <- snapshot$target_identity$model$targets %||% list()
+    symbols <- export_project_symbol_order(snapshot)
+    rank <- vapply(seq_along(entries), function(i) {
+      row <- entries[[i]]
+      rec <- as.character(row$record_id %||% "")
+      for (j in seq_along(identities)) {
+        idn <- identities[[j]]
+        if (nzchar(rec) && rec %in% c(
+          idn$display_symbol,
+          idn$input_text,
+          idn$uniprot_accession,
+          idn$ensembl_gene_id,
+          idn$hgnc_id
+        )) {
+          return(as.numeric(j))
+        }
+      }
+      for (item in snapshot$literature$model$targets %||% list()) {
+        if (nzchar(rec) && rec %in% c(item$target$ncbi_gene_id, item$target$symbol, item$target$uniprot_accession)) {
+          hit <- match(item$target$symbol, symbols)
+          return(if (is.na(hit)) Inf else as.numeric(hit))
+        }
+      }
+      Inf
+    }, numeric(1))
+    entries <- entries[order(rank, seq_along(entries))]
+  }
+  rows <- lapply(entries, function(row) {
     list(
       row$source %||% "Not provided",
       row$record_id,
@@ -893,6 +851,7 @@ new_export_metrics <- function() {
   env <- new.env(parent = emptyenv())
   env$plot_ms <- 0
   env$plot_n <- 0L
+  env$ggsave_n <- 0L
   env$plot_bytes <- 0
   env$plot_b64_bytes <- 0
   env$plots <- list()

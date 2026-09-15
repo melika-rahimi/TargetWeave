@@ -193,6 +193,74 @@ snapshot_target_rows <- function(snapshot) {
   }))
 }
 
+export_project_symbol_order <- function(snapshot) {
+  symbols <- as.character(snapshot_target_rows(snapshot)$symbol)
+  symbols[nzchar(symbols)]
+}
+
+export_project_target_ids <- function(snapshot) {
+  items <- snapshot$target_identity$model$targets %||% list()
+  vapply(items, function(row) {
+    as.character(row$project_target_id %||% row$id %||% "")
+  }, character(1))
+}
+
+export_item_symbol <- function(item) {
+  as.character(
+    item$target$symbol %||%
+      item$model$target$symbol %||%
+      item$model$identity$symbol %||%
+      item$display_symbol %||%
+      ""
+  )
+}
+
+export_reorder_by_symbols <- function(items, symbol_order) {
+  if (is.null(items) || length(items) == 0L) {
+    return(items)
+  }
+  if (is.data.frame(items)) {
+    return(export_reorder_symbol_df(items, symbol_order))
+  }
+  nms <- names(items)
+  ids <- if (!is.null(nms) && any(nzchar(nms))) nms else NULL
+  keys <- if (!is.null(ids)) ids else vapply(items, export_item_symbol, character(1))
+  ranked <- match(keys, symbol_order)
+  ranked[is.na(ranked)] <- length(symbol_order) + seq_len(sum(is.na(ranked)))
+  items[order(ranked, seq_along(items))]
+}
+
+export_reorder_section_targets <- function(targets, snapshot) {
+  if (is.null(targets) || length(targets) == 0L) {
+    return(targets)
+  }
+  ids <- export_project_target_ids(snapshot)
+  nms <- names(targets)
+  if (!is.null(nms) && length(ids) > 0L && length(intersect(nms, ids)) > 0L) {
+    ranked <- match(nms, ids)
+    ranked[is.na(ranked)] <- length(ids) + seq_len(sum(is.na(ranked)))
+    return(targets[order(ranked, seq_along(targets))])
+  }
+  export_reorder_by_symbols(targets, export_project_symbol_order(snapshot))
+}
+
+export_reorder_symbol_df <- function(df, symbol_order, column = "symbol") {
+  if (is.null(df) || nrow(df) == 0L || !column %in% names(df)) {
+    return(df)
+  }
+  ranked <- match(as.character(df[[column]]), symbol_order)
+  ranked[is.na(ranked)] <- length(symbol_order) + seq_len(sum(is.na(ranked)))
+  df[order(ranked, seq_len(nrow(df))), , drop = FALSE]
+}
+
+export_format_coverage_pct <- function(value) {
+  num <- export_scalar_num(value)
+  if (length(num) != 1L || is.na(num)) {
+    return(NA_character_)
+  }
+  sprintf("%.1f%%", 100 * num)
+}
+
 export_targets_csv <- function(snapshot) {
   snapshot_target_rows(snapshot)[, c(
     "symbol", "ensembl_gene_id", "uniprot_accession", "hgnc_id", "ncbi_gene_id"
@@ -203,7 +271,10 @@ export_comparison_csv <- function(snapshot) {
   if (!export_section_has_content(snapshot$comparison)) {
     return(NULL)
   }
-  targets <- snapshot$comparison$model$targets
+  targets <- export_reorder_symbol_df(
+    snapshot$comparison$model$targets,
+    export_project_symbol_order(snapshot)
+  )
   if (is.null(targets) || nrow(targets) == 0) {
     return(NULL)
   }
@@ -249,8 +320,11 @@ export_pathways_csv <- function(snapshot) {
     if (nrow(present) > 0) {
       grouped <- split(as.character(present$symbol), as.character(present$pathway_id))
       ids <- as.character(rows$pathway_id)
+      order_syms <- export_project_symbol_order(snapshot)
       matched <- vapply(ids, function(id) {
-        paste(unique(grouped[[id]] %||% character()), collapse = "; ")
+        present_syms <- unique(grouped[[id]] %||% character())
+        ordered <- c(intersect(order_syms, present_syms), setdiff(present_syms, order_syms))
+        paste(ordered, collapse = "; ")
       }, character(1))
       counts <- vapply(ids, function(id) length(unique(grouped[[id]] %||% character())), integer(1))
     }
@@ -280,7 +354,11 @@ export_literature_csv <- function(snapshot) {
     stringsAsFactors = FALSE
   )
   parts <- list()
-  for (item in snapshot$literature$model$targets %||% list()) {
+  lit_items <- export_reorder_by_symbols(
+    snapshot$literature$model$targets %||% list(),
+    export_project_symbol_order(snapshot)
+  )
+  for (item in lit_items) {
     recs <- item$recent_records
     if (is.null(recs) || nrow(recs) == 0) {
       next
@@ -308,7 +386,11 @@ export_structures_csv <- function(snapshot) {
     return(NULL)
   }
   parts <- list()
-  for (item in snapshot$structures$model$targets %||% list()) {
+  struct_items <- export_reorder_by_symbols(
+    snapshot$structures$model$targets %||% list(),
+    export_project_symbol_order(snapshot)
+  )
+  for (item in struct_items) {
     for (rec in item$records %||% list()) {
       chains <- rec$polymer_entity$chains %||% rec$chains %||% character()
       if (is.list(chains)) {

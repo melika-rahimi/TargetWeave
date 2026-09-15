@@ -133,7 +133,8 @@ test_that("HTML dossier is self-contained and preserves captured values", {
   expect_match(html, "Reactome")
   expect_match(html, "not probabilities of causality")
   expect_match(html, "Publication counts describe literature volume")
-  expect_match(html, "data:image/png;base64,")
+  expect_match(html, "class=\"tw-viz\"")
+  expect_false(grepl("data:image/png;base64,", html, fixed = TRUE))
   expect_false(grepl("127\\.0\\.0\\.1", html))
   expect_false(grepl("localhost", html, ignore.case = TRUE))
   expect_false(grepl("shiny", html, ignore.case = TRUE))
@@ -507,6 +508,7 @@ test_that("HTML export uses frozen snapshot data only", {
     "R/export/export_dossier.R",
     "R/export/export_tables.R",
     "R/export/export_manifest.R",
+    "R/export/export_lite_viz.R",
     "R/modules/mod_research.R"
   )
   for (rel in files) {
@@ -530,7 +532,7 @@ test_that("production-shaped four-target dossier renders without coercion warnin
   identity <- vapply(snap$target_identity$model$targets, function(row) {
     as.character(row$display_symbol %||% row$input_text)
   }, character(1))
-  expect_equal(sort(identity), c("EGFR", "KRAS", "MET", "TP53"))
+  expect_equal(identity, c("EGFR", "KRAS", "MET", "TP53"))
 
   expect_equal(nrow(snap$pathways$model$pathways), PATHWAY_MATRIX_ROW_CAP)
   expect_equal(
@@ -569,10 +571,53 @@ test_that("production-shaped four-target dossier renders without coercion warnin
   expect_match(html, "MET")
   expect_match(html, "TP53")
   expect_match(html, "Not retrieved before snapshot capture.")
-  expect_match(html, "data:image/png;base64,")
+  expect_match(html, "class=\"tw-viz\"")
+  expect_false(grepl("data:image/png;base64,", html, fixed = TRUE))
   expect_false(grepl("NAs introduced by coercion", html, fixed = TRUE))
   expect_true(isTRUE(result$file_bytes > 0))
   expect_equal(result$metrics$plot_n, 12L)
+  expect_equal(as.integer(result$metrics$ggsave_n %||% 0L), 0L)
+  expect_equal(cmp$target, c("EGFR", "KRAS", "MET", "TP53"))
+  expect_equal(unique(csv$target), c("EGFR", "KRAS", "MET", "TP53"))
+  expect_match(html, "<th>EGFR</th><th>KRAS</th><th>MET</th><th>TP53</th>")
+  ident_html <- sub(".*<section id=\"identities\">", "", html)
+  ident_html <- sub("</section>.*", "", ident_html)
+  ident_pos <- vapply(
+    c("EGFR", "KRAS", "MET", "TP53"),
+    function(sym) as.integer(regexpr(sym, ident_html, fixed = TRUE)[[1]]),
+    integer(1)
+  )
+  expect_true(all(ident_pos > 0) && all(diff(ident_pos) > 0))
+  lit_html <- sub(".*<section id=\"literature\">", "", html)
+  lit_html <- sub("</section>.*", "", lit_html)
+  lit_pos <- vapply(
+    c("<h3>EGFR</h3>", "<h3>KRAS</h3>", "<h3>MET</h3>", "<h3>TP53</h3>"),
+    function(tag) as.integer(regexpr(tag, lit_html, fixed = TRUE)[[1]]),
+    integer(1)
+  )
+  expect_true(all(lit_pos > 0) && all(diff(lit_pos) > 0))
+  stru <- sub(".*<section id=\"structures\">", "", html)
+  stru <- sub("</section>.*", "", stru)
+  expect_match(stru, "9.0%")
+  expect_false(grepl("0.894", stru, fixed = TRUE))
+  expect_false(grepl(">0%<", stru))
+  expect_false(grepl(">0.09<", stru))
+})
+
+test_that("coverage display is percent and comparison bars keep project order", {
+  expect_equal(export_format_coverage_pct(0.894179894179894), "89.4%")
+  expect_true(is.na(export_format_coverage_pct(NA_real_)))
+  bars <- export_lite_ot_scores_html(
+    data.frame(
+      symbol = c("EGFR", "KRAS"),
+      overall_direct_score = c(0.2, 0.9),
+      stringsAsFactors = FALSE
+    ),
+    symbol_order = c("EGFR", "KRAS")
+  )
+  egfr <- as.integer(regexpr("EGFR", bars, fixed = TRUE)[[1]])
+  kras <- as.integer(regexpr("KRAS", bars, fixed = TRUE)[[1]])
+  expect_true(egfr > 0 && kras > egfr)
 })
 
 test_that("legacy string NA and JSON-null snapshots both export missing coverage as missing", {

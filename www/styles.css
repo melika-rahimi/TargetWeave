@@ -2132,9 +2132,17 @@ div:has(> table.evidence-table),
   font-weight: 650;
 }
 
-.tab-panel-shell:has(.shiny-html-output.recalculating) > .tab-loading-msg,
-.tab-panel-shell:has(.shiny-html-output:empty) > .tab-loading-msg {
+/* First paint, or assembling a placeholder into real content. */
+.tab-panel-shell:has(> .shiny-html-output:empty) > .tab-loading-msg,
+.tab-panel-shell:has(.shiny-html-output:empty) > .tab-loading-msg,
+.tab-panel-shell:has(.shiny-html-output.recalculating):has(.panel-state-empty) > .tab-loading-msg,
+.tab-panel-shell:has(.shiny-html-output.recalculating):has(.panel-state-blocked) > .tab-loading-msg {
   display: block;
+}
+
+/* Retrieval is a different state; never stack it with the generic banner. */
+.tab-panel-shell:has(.panel-state-retrieving) > .tab-loading-msg {
+  display: none;
 }
 
 .tw-bars {

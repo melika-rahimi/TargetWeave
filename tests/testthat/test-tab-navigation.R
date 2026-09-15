@@ -37,6 +37,48 @@ test_that("tab shells announce a section loading state", {
   expect_match(css, "recalculating")
 })
 
+test_that("generic tab loading and scientific retrieval banners are mutually exclusive", {
+  css <- paste(readLines(file.path(app_root(), "www", "styles.css")), collapse = "\n")
+  expect_match(
+    css,
+    "\\.tab-panel-shell:has\\(\\.panel-state-retrieving\\)\\s*>\\s*\\.tab-loading-msg\\s*\\{[[:space:]]*display:\\s*none"
+  )
+  expect_match(css, "panel-state-empty")
+  expect_false(grepl(
+    "\\.tab-panel-shell:has\\(\\.shiny-html-output\\.recalculating\\)\\s*>\\s*\\.tab-loading-msg",
+    css
+  ))
+
+  retrieving <- as.character(panel_state_ui("retrieving", "Retrieving Reactome pathways\u2026"))
+  expect_match(retrieving, "panel-state-retrieving")
+  expect_false(grepl("Loading pathways", retrieving, fixed = TRUE))
+
+  shell <- as.character(tab_panel_shell(
+    loading_label = "Loading pathways\u2026",
+    div(
+      class = "shiny-html-output recalculating",
+      panel_state_ui("retrieving", "Retrieving Reactome pathways\u2026")
+    )
+  ))
+  expect_match(shell, "Loading pathways")
+  expect_match(shell, "Retrieving Reactome pathways")
+  expect_match(shell, "panel-state-retrieving")
+  expect_match(shell, "data-tab-loading")
+
+  compare <- read_module("mod_ot_comparison.R")
+  pathways <- read_module("mod_pathways.R")
+  literature <- read_module("mod_literature.R")
+  structures <- read_module("mod_structures.R")
+  overview <- read_module("mod_overview.R")
+  evidence <- read_module("mod_disease_evidence.R")
+  expect_match(compare, "Retrieving Open Targets evidence")
+  expect_match(pathways, "Retrieving Reactome pathways")
+  expect_match(literature, "Retrieving PubMed records")
+  expect_match(structures, "Retrieving experimental structures")
+  expect_match(overview, "Retrieving identity")
+  expect_match(evidence, "Retrieving Open Targets evidence")
+})
+
 test_that("live comparison and pathway UIs use HTML visuals, not plot placeholders", {
   snap <- production_like_export_snapshot()
   ns <- shiny::NS("x")

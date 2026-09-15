@@ -225,7 +225,12 @@ schedule_after_flush <- function(session, fun) {
 tab_panel_shell <- function(..., loading_label) {
   div(
     class = "tab-panel-shell",
-    div(class = "tab-loading-msg", role = "status", loading_label),
+    div(
+      class = "tab-loading-msg",
+      role = "status",
+      `data-tab-loading` = "true",
+      loading_label
+    ),
     ...
   )
 }

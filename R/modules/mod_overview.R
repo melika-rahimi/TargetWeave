@@ -87,7 +87,7 @@ mod_overview_server <- function(
     }
 
     observeEvent(
-      list(target_id(), identity_revision(), panel_active()),
+      list(target_id(), identity_revision()),
       {
         current_id <- target_id()
         if (is.null(current_id)) {
@@ -109,7 +109,7 @@ mod_overview_server <- function(
           last_fetch_signature(NA_character_)
         }
 
-        if (!isTRUE(panel_active())) {
+        if (!isTRUE(isolate(panel_active()))) {
           return()
         }
 
@@ -117,6 +117,12 @@ mod_overview_server <- function(
       },
       ignoreNULL = TRUE
     )
+
+    observeEvent(panel_active(), {
+      if (isTRUE(panel_active())) {
+        start_overview()
+      }
+    }, ignoreInit = TRUE)
 
     observeEvent(input$refresh_overview, {
       req(user(), target_id(), isTRUE(panel_active()))
@@ -184,16 +190,7 @@ mod_overview_server <- function(
       overview_body_ui(current$overview, ns)
     })
 
-    output$genomic_plot <- renderPlot({
-      current <- overview_result()
-      if (is.null(current) || is.null(current$overview)) {
-        return(invisible(NULL))
-      }
-      plot_genomic_context(
-        current$overview$genomic,
-        current$overview$identity$symbol
-      )
-    })
+    keep_tab_outputs_visible(output, "body")
 
     list(
       changed = reactive({
@@ -291,7 +288,7 @@ overview_body_ui <- function(overview, ns) {
       if (is.null(build_genomic_plot_data(genomic, identity$symbol))) {
         p(class = "field-help", "Genomic coordinates were not provided by Ensembl.")
       } else {
-        plotOutput(ns("genomic_plot"), height = "240px")
+        as_live_viz(export_lite_genomic_html(genomic, identity$symbol))
       }
     ),
     div(

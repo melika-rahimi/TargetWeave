@@ -1,7 +1,12 @@
 structure_coverage_plot_data <- function(records, uniprot_length, max_rows = STRUCTURE_COVERAGE_ROW_CAP) {
-  if (length(records) == 0 || is.na(as.integer(uniprot_length)) || as.integer(uniprot_length) <= 0L) {
+  if (length(records) == 0) {
     return(NULL)
   }
+  raw_len <- suppressWarnings(as.integer(uniprot_length))
+  if (length(raw_len) < 1L || is.na(raw_len[[1]]) || raw_len[[1]] <= 0L) {
+    return(NULL)
+  }
+  length_aa <- raw_len[[1]]
   shown <- records[seq_len(min(length(records), as.integer(max_rows)))]
   n <- length(shown)
   rows <- list()
@@ -33,7 +38,7 @@ structure_coverage_plot_data <- function(records, uniprot_length, max_rows = STR
   data <- do.call(rbind, rows)
   list(
     segments = data,
-    uniprot_length = as.integer(uniprot_length),
+    uniprot_length = length_aa,
     n_shown = n,
     n_total = length(records),
     y_labels = labels

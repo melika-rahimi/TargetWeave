@@ -87,54 +87,6 @@ mod_research_server <- function(
       viewing(load_snapshot_for_view(db_pool, sid, uid))
     }, ignoreNULL = FALSE)
 
-    output$compare_plot <- renderPlot({
-      snapshot_safe_plot(function() {
-        snap <- viewing()
-        mat <- snap$comparison$model$datatype_matrix
-        if (is.null(mat) || !is.data.frame(mat) || nrow(mat) == 0) {
-          return(NULL)
-        }
-        plot_ot_comparison_heatmap(mat, snap$comparison$model$disease$name)
-      })
-    }, height = 280)
-
-    output$pathway_plot <- renderPlot({
-      snapshot_safe_plot(function() {
-        snap <- viewing()
-        mat <- snap$pathways$model$membership_matrix
-        if (is.null(mat) || !is.data.frame(mat) || nrow(mat) == 0) {
-          return(NULL)
-        }
-        capped <- snapshot_pathway_plot_matrix(mat)
-        plot_pathway_membership_matrix(
-          capped$matrix,
-          capped$pathway_order
-        )
-      })
-    }, height = 280)
-
-    output$structure_plot <- renderPlot({
-      snapshot_safe_plot(function() {
-        snap <- viewing()
-        summary <- snap$structures$model$summary
-        if (is.null(summary) || !is.data.frame(summary) || nrow(summary) == 0) {
-          return(NULL)
-        }
-        plot_structure_entry_counts(summary)
-      })
-    }, height = 180)
-
-    output$coverage_plot <- renderPlot({
-      snapshot_safe_plot(function() {
-        snap <- viewing()
-        item <- (snap$structures$model$targets %||% list())[[1]]
-        if (is.null(item)) {
-          return(NULL)
-        }
-        plot_structure_coverage(item$records, item$uniprot_length)
-      })
-    }, height = 240)
-
     output$body <- renderUI({
       ns <- session$ns
       if (!is.null(viewing())) {
@@ -142,6 +94,8 @@ mod_research_server <- function(
       }
       snapshot_list_ui(ns, snapshots(), preview(), form_message(), project_notes())
     })
+
+    keep_tab_outputs_visible(output, "body")
 
     observeEvent(input$save_snapshot, {
       if (!isTRUE(save_guard$try_start())) {
@@ -423,7 +377,7 @@ snapshot_view_ui <- function(ns, snap, message = NULL, notes = NULL) {
     snapshot_section_block("Compare evidence", snap$comparison, function(model) {
       if (is.null(model$datatype_matrix)) return(p("No comparison matrix was captured."))
       tagList(
-        plotOutput(ns("compare_plot"), height = "280px"),
+        as_live_viz(export_lite_ot_heatmap_html(model$datatype_matrix, model$disease$name)),
         p(class = "field-help", sprintf(
           "Open Targets data version %s · API %s",
           model$provenance$data_version %||% "Not provided",
@@ -433,16 +387,24 @@ snapshot_view_ui <- function(ns, snap, message = NULL, notes = NULL) {
     }),
     snapshot_section_block("Pathways", snap$pathways, function(model) {
       if (is.null(model$membership_matrix)) return(p("No pathway membership was captured."))
+      capped <- snapshot_pathway_plot_matrix(model$membership_matrix)
       tagList(
-        plotOutput(ns("pathway_plot"), height = "280px"),
+        as_live_viz(export_lite_pathway_html(capped$matrix, capped$pathway_order)),
         p(class = "field-help", sprintf("Reactome release %s", model$provenance$reactome_release %||% "Not provided"))
       )
     }),
     snapshot_section_block("Literature", snap$literature, snapshot_literature_ui),
     snapshot_section_block("Structures", snap$structures, function(model) {
+      item <- (model$targets %||% list())[[1]]
       tagList(
-        plotOutput(ns("structure_plot"), height = "180px"),
-        plotOutput(ns("coverage_plot"), height = "240px"),
+        as_live_viz(export_lite_pdb_counts_html(model$summary)),
+        if (!is.null(item)) {
+          as_live_viz(export_lite_coverage_html(
+            item$records,
+            item$uniprot_length,
+            item$target$symbol %||% item$target$display_symbol
+          ))
+        },
         p(class = "field-help", "PDB coordinates are not stored; open the original RCSB page from captured PDB IDs.")
       )
     }),

@@ -110,7 +110,7 @@ mod_ot_comparison_server <- function(
     }
 
     observeEvent(
-      list(project_id(), identity_revision(), disease_revision(), panel_active()),
+      list(project_id(), identity_revision(), disease_revision()),
       {
         current_project <- project_id()
         if (is.null(current_project)) {
@@ -131,7 +131,7 @@ mod_ot_comparison_server <- function(
           visual_ids(character())
         }
 
-        if (!isTRUE(panel_active())) {
+        if (!isTRUE(isolate(panel_active()))) {
           return()
         }
 
@@ -139,6 +139,12 @@ mod_ot_comparison_server <- function(
       },
       ignoreNULL = TRUE
     )
+
+    observeEvent(panel_active(), {
+      if (isTRUE(panel_active())) {
+        start_comparison()
+      }
+    }, ignoreInit = TRUE)
 
     observeEvent(input$compare_include, {
       current <- comparison_result()
@@ -157,40 +163,6 @@ mod_ot_comparison_server <- function(
       inspect_id(as.character(input$inspect_target))
     }, ignoreInit = TRUE)
 
-    output$heatmap <- renderPlot({
-      current <- comparison_result()
-      comparison <- current$comparison
-      if (is.null(comparison)) {
-        return(invisible(NULL))
-      }
-      visible <- filter_comparison_visual(comparison, visual_ids())
-      plot_ot_comparison_heatmap(
-        visible$datatype_matrix_visible,
-        disease_name = comparison$disease$name
-      )
-    }, height = function() {
-      current <- comparison_result()
-      comparison <- current$comparison
-      if (is.null(comparison) || nrow(comparison$datatype_matrix) == 0) {
-        return(220)
-      }
-      n_types <- length(unique(comparison$datatype_matrix$datatype_id))
-      as.integer(90 + 34 * n_types)
-    }, bg = "#FFFFFF")
-
-    output$overall_plot <- renderPlot({
-      current <- comparison_result()
-      comparison <- current$comparison
-      if (is.null(comparison)) {
-        return(invisible(NULL))
-      }
-      visible <- filter_comparison_visual(comparison, visual_ids())
-      plot_ot_overall_scores(visible$targets_visible)
-    }, height = function() {
-      n <- max(length(visual_ids()), 2L)
-      as.integer(90 + 36 * n)
-    }, bg = "#FFFFFF")
-
     output$body <- renderUI({
       ns <- session$ns
       if (inflight_has(inflight, "compare")) {
@@ -200,6 +172,8 @@ mod_ot_comparison_server <- function(
       current <- comparison_result()
       comparison_result_ui(current, ns, visual_ids())
     })
+
+    keep_tab_outputs_visible(output, "body")
 
     list(
       inspect = reactive(inspect_id()),
@@ -277,7 +251,11 @@ comparison_result_ui <- function(current, ns, selected_ids = character()) {
         class = "overview-section",
         h3("Open Targets overall association score"),
         p(class = "field-help", "Direct association, sorted by the Platform score. This is sorting, not a ranking."),
-        plotOutput(ns("overall_plot"), height = "auto")
+        as_live_viz({
+          bars <- visible$targets_visible
+          bars <- bars[order(bars$overall_direct_score, bars$symbol, na.last = TRUE), , drop = FALSE]
+          export_lite_ot_scores_html(bars)
+        })
       )
     },
     if (has_heatmap) {
@@ -286,7 +264,10 @@ comparison_result_ui <- function(current, ns, selected_ids = character()) {
         `data-tour` = "compare-heatmap",
         h3("Evidence profile by data type"),
         p(class = "field-help", "Direct association scores. Grey — was not returned; 0.00 is a returned zero."),
-        plotOutput(ns("heatmap"), height = "auto")
+        as_live_viz(export_lite_ot_heatmap_html(
+          visible$datatype_matrix_visible,
+          comparison$disease$name
+        ))
       )
     } else {
       div(

@@ -103,7 +103,7 @@ mod_pathways_server <- function(
     }
 
     observeEvent(
-      list(project_id(), identity_revision(), panel_active()),
+      list(project_id(), identity_revision()),
       {
         if (is.null(project_id())) {
           pathway_result(NULL)
@@ -118,13 +118,19 @@ mod_pathways_server <- function(
           last_fetch_signature(NA_character_)
           visual_ids(character())
         }
-        if (!isTRUE(panel_active())) {
+        if (!isTRUE(isolate(panel_active()))) {
           return()
         }
         start_pathways()
       },
       ignoreNULL = TRUE
     )
+
+    observeEvent(panel_active(), {
+      if (isTRUE(panel_active())) {
+        start_pathways()
+      }
+    }, ignoreInit = TRUE)
 
     observeEvent(input$pathway_include, {
       current <- pathway_result()
@@ -143,35 +149,6 @@ mod_pathways_server <- function(
       inspect_id(as.character(input$inspect_pathway))
     }, ignoreInit = TRUE)
 
-    output$membership_plot <- renderPlot({
-      current <- pathway_result()
-      overlap <- current$pathways
-      if (is.null(overlap)) {
-        return(invisible(NULL))
-      }
-      visible <- filter_pathway_visual(
-        overlap,
-        visual_ids(),
-        shared_only = identical(input$pathway_filter, "shared")
-      )
-      plot_pathway_membership_matrix(
-        visible$membership_matrix_visible,
-        as.character(visible$pathways_visible$pathway_name)
-      )
-    }, height = function() {
-      current <- pathway_result()
-      overlap <- current$pathways
-      if (is.null(overlap)) {
-        return(220)
-      }
-      visible <- isolate(filter_pathway_visual(
-        overlap,
-        visual_ids(),
-        shared_only = identical(input$pathway_filter, "shared")
-      ))
-      as.integer(110 + 22 * max(nrow(visible$pathways_visible), 1L))
-    }, bg = "#FFFFFF")
-
     output$body <- renderUI({
       ns <- session$ns
       if (inflight_has(inflight, "pathways")) {
@@ -186,6 +163,8 @@ mod_pathways_server <- function(
         query = input$pathway_query
       )
     })
+
+    keep_tab_outputs_visible(output, "body")
 
     list(
       ready = reactive(!is.null(pathway_result())),
@@ -297,7 +276,17 @@ pathways_result_ui <- function(
     div(
       class = "overview-section",
       h3("Membership matrix"),
-      plotOutput(ns("membership_plot"), height = "auto")
+      as_live_viz({
+        visible <- filter_pathway_visual(
+          overlap,
+          selected_ids,
+          shared_only = identical(filter_choice, "shared")
+        )
+        export_lite_pathway_html(
+          visible$membership_matrix_visible,
+          as.character(visible$pathways_visible$pathway_name)
+        )
+      })
     ),
     pathway_detail_ui(overlap, inspect_id),
     div(

@@ -98,7 +98,7 @@ mod_disease_evidence_server <- function(
     }
 
     observeEvent(
-      list(target_id(), identity_revision(), disease_revision(), panel_active()),
+      list(target_id(), identity_revision(), disease_revision()),
       {
         current_id <- target_id()
         if (is.null(current_id)) {
@@ -120,7 +120,7 @@ mod_disease_evidence_server <- function(
           last_fetch_signature(NA_character_)
         }
 
-        if (!isTRUE(panel_active())) {
+        if (!isTRUE(isolate(panel_active()))) {
           return()
         }
 
@@ -129,23 +129,16 @@ mod_disease_evidence_server <- function(
       ignoreNULL = TRUE
     )
 
+    observeEvent(panel_active(), {
+      if (isTRUE(panel_active())) {
+        start_evidence()
+      }
+    }, ignoreInit = TRUE)
+
     observeEvent(input$refresh_evidence, {
       req(user(), target_id(), isTRUE(panel_active()))
       start_evidence(force = TRUE)
     }, ignoreInit = TRUE)
-
-    output$evidence_plot <- renderPlot({
-      current <- evidence_result()
-      evidence <- current$evidence
-      if (is.null(evidence) || is.null(evidence$association$datatype_scores)) {
-        return(invisible(NULL))
-      }
-      plot_ot_evidence_profile(
-        evidence$association$datatype_scores,
-        symbol = evidence$target$symbol,
-        disease_name = evidence$disease$name
-      )
-    }, height = 420, bg = "#FFFFFF")
 
     output$drilldown <- renderUI({
       current <- evidence_result()
@@ -249,6 +242,8 @@ mod_disease_evidence_server <- function(
       )
     })
 
+    keep_tab_outputs_visible(output, c("body", "drilldown"))
+
     list(current = reactive(evidence_result()))
   })
 }
@@ -319,7 +314,11 @@ evidence_result_ui <- function(current, ns) {
       if (present == 0) {
         p("No data-type association scores were returned. That is not the same as an API error.")
       } else {
-        plotOutput(ns("evidence_plot"), height = "420px")
+        as_live_viz(export_lite_ot_evidence_html(
+          scores,
+          evidence$target$symbol,
+          evidence$disease$name
+        ))
       },
       if (missing > 0) {
         p(class = "field-help", "Some evidence types had no score returned. That is distinct from a returned score of 0.")

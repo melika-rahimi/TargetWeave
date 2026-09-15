@@ -108,7 +108,7 @@ mod_literature_server <- function(
     }
 
     observeEvent(
-      list(project_id(), identity_revision(), disease_revision(), panel_active()),
+      list(project_id(), identity_revision(), disease_revision()),
       {
         if (is.null(project_id())) {
           literature_result(NULL)
@@ -123,13 +123,19 @@ mod_literature_server <- function(
           last_fetch_signature(NA_character_)
           selected_target_id(NULL)
         }
-        if (!isTRUE(panel_active())) {
+        if (!isTRUE(isolate(panel_active()))) {
           return()
         }
         start_literature()
       },
       ignoreNULL = TRUE
     )
+
+    observeEvent(panel_active(), {
+      if (isTRUE(panel_active())) {
+        start_literature()
+      }
+    }, ignoreInit = TRUE)
 
     observeEvent(input$literature_target, {
       current <- literature_result()
@@ -158,19 +164,6 @@ mod_literature_server <- function(
       }
       items[[1]]
     })
-
-    output$trend_plot <- renderPlot({
-      item <- selected_item()
-      req(!is.null(item))
-      plot_publication_trend(item$trend)
-    }, height = 240)
-
-    output$comparison_plot <- renderPlot({
-      current <- literature_result()
-      counts <- current$literature$target_counts
-      req(!is.null(counts), nrow(counts) > 0)
-      plot_pubmed_counts_by_target(counts)
-    }, height = 200)
 
     output$body <- renderUI({
       ns <- session$ns
@@ -201,6 +194,8 @@ mod_literature_server <- function(
         selected_target_id()
       )
     })
+
+    keep_tab_outputs_visible(output, "body")
 
     list(current = reactive(literature_result()))
   })
@@ -282,14 +277,18 @@ literature_result_ui <- function(ns, current, selected, selected_id) {
           class = "overview-section",
           h3("Publication activity"),
           p(class = "field-help", "Annual PubMed record counts for the last 10 calendar years. The current year is a partial year."),
-          plotOutput(ns("trend_plot"), height = "240px")
+          as_live_viz(export_lite_trend_html(selected$trend, selected$target$symbol))
         ),
         literature_recent_ui(selected$recent_records),
         div(
           class = "overview-section",
           h3("PubMed records by target"),
           p(class = "field-help", "Literature volume is not target importance. Counts use the same corpus definition for every target."),
-          if (nrow(counts) > 0) plotOutput(ns("comparison_plot"), height = "200px") else NULL
+          if (nrow(counts) > 0) {
+            as_live_viz(export_lite_pubmed_counts_html(counts))
+          } else {
+            NULL
+          }
         ),
         literature_search_definition_ui(selected, lit),
         literature_provenance_ui(selected, lit)

@@ -105,7 +105,7 @@ mod_structures_server <- function(
     }
 
     observeEvent(
-      list(project_id(), identity_revision(), panel_active()),
+      list(project_id(), identity_revision()),
       {
         if (is.null(project_id())) {
           structure_result(NULL)
@@ -118,13 +118,19 @@ mod_structures_server <- function(
           structure_result(NULL)
           last_fetch_signature(NA_character_)
         }
-        if (!isTRUE(panel_active())) {
+        if (!isTRUE(isolate(panel_active()))) {
           return()
         }
         start_structures()
       },
       ignoreNULL = TRUE
     )
+
+    observeEvent(panel_active(), {
+      if (isTRUE(panel_active())) {
+        start_structures()
+      }
+    }, ignoreInit = TRUE)
 
     observeEvent(input$structure_target, {
       summary <- structure_result()$structures$summary
@@ -170,20 +176,6 @@ mod_structures_server <- function(
       NULL
     })
 
-    output$coverage_plot <- renderPlot({
-      item <- selected_item()
-      req(!is.null(item))
-      rec <- selected_record()
-      sel <- if (is.null(rec)) NULL else rec$polymer_entity$entity_identifier
-      plot_structure_coverage(item$records, item$uniprot_length, selected_id = sel)
-    }, height = 280)
-
-    output$summary_plot <- renderPlot({
-      summary <- structure_result()$structures$summary
-      req(!is.null(summary), nrow(summary) > 0)
-      plot_structure_entry_counts(summary)
-    }, height = 180)
-
     output$body <- renderUI({
       ns <- session$ns
       if (inflight_has(inflight, "structures")) {
@@ -205,6 +197,8 @@ mod_structures_server <- function(
       }
       structures_result_ui(ns, current, selected_item(), selected_record(), selected_target_id())
     })
+
+    keep_tab_outputs_visible(output, "body")
 
     list(current = reactive(structure_result()))
   })
@@ -309,7 +303,11 @@ structures_result_ui <- function(ns, current, selected, record, selected_id) {
                   selected$n_polymer_entities
                 )
               ),
-              plotOutput(ns("coverage_plot"), height = "280px")
+              as_live_viz(export_lite_coverage_html(
+                selected$records,
+                selected$uniprot_length,
+                selected$target$symbol
+              ))
             ),
             structure_table_ui(ns, selected),
             structure_detail_ui(ns, selected, record),
@@ -317,7 +315,7 @@ structures_result_ui <- function(ns, current, selected, record, selected_id) {
               class = "overview-section",
               h3("Experimental PDB entries by target"),
               p(class = "field-help", "Entry counts are availability, not target importance."),
-              plotOutput(ns("summary_plot"), height = "180px")
+              as_live_viz(export_lite_pdb_counts_html(summary))
             )
           )
         },

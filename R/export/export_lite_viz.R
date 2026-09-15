@@ -256,6 +256,27 @@ export_lite_trend_html <- function(trend, symbol) {
   )
 }
 
+export_lite_pubmed_counts_html <- function(counts) {
+  if (is.null(counts) || nrow(counts) == 0) {
+    return("")
+  }
+  ymax <- max(as.numeric(counts$pubmed_record_count), na.rm = TRUE)
+  if (!is.finite(ymax) || ymax <= 0) {
+    ymax <- 1
+  }
+  inner <- export_lite_bar_rows(
+    as.character(counts$symbol),
+    counts$pubmed_record_count,
+    formatted = as.character(as.integer(counts$pubmed_record_count)),
+    max_value = ymax
+  )
+  export_lite_figure(
+    inner,
+    alt = "PubMed record counts by target",
+    caption = "Literature volume is not target importance. Source: NCBI PubMed"
+  )
+}
+
 export_lite_pdb_counts_html <- function(summary) {
   if (is.null(summary) || nrow(summary) == 0) {
     return("")

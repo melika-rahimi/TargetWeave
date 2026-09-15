@@ -58,6 +58,7 @@ helper_env$reactiveVal <- shiny::reactiveVal
 helper_env$reactive <- shiny::reactive
 helper_env$renderUI <- shiny::renderUI
 helper_env$req <- shiny::req
+helper_env$isolate <- shiny::isolate
 helper_env$icon <- shiny::icon
 helper_env$hr <- htmltools::hr
 helper_env$br <- htmltools::br
@@ -66,6 +67,7 @@ helper_env$checkboxInput <- shiny::checkboxInput
 helper_env$downloadButton <- shiny::downloadButton
 helper_env$downloadHandler <- shiny::downloadHandler
 helper_env$renderPlot <- shiny::renderPlot
+helper_env$outputOptions <- shiny::outputOptions
 helper_env$updateTextInput <- shiny::updateTextInput
 helper_env$updateTextAreaInput <- shiny::updateTextAreaInput
 helper_env$updateSelectInput <- shiny::updateSelectInput
@@ -121,6 +123,9 @@ source_app("R/viz/viz_literature.R")
 source_app("R/viz/viz_structures.R")
 source_app("R/export/export_lite_viz.R")
 source_app("R/ui/ui_components.R")
+helper_env$tab_panel_shell <- tab_panel_shell
+helper_env$as_live_viz <- as_live_viz
+helper_env$keep_tab_outputs_visible <- keep_tab_outputs_visible
 source_app("R/ui/ui_landing.R")
 source_app("R/ui/ui_tour.R")
 source_app("R/modules/mod_overview.R")

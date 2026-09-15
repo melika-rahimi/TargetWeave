@@ -30,7 +30,10 @@ mod_project_home_ui <- function(id) {
         conditionalPanel(
           condition = "input.workspace_panel == 'project'",
           ns = ns,
-          uiOutput(ns("project_stage"))
+          tab_panel_shell(
+            loading_label = "Loading project\u2026",
+            uiOutput(ns("project_stage"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'resolver'",
@@ -40,37 +43,58 @@ mod_project_home_ui <- function(id) {
         conditionalPanel(
           condition = "input.workspace_panel == 'overview'",
           ns = ns,
-          mod_overview_ui(ns("overview"))
+          tab_panel_shell(
+            loading_label = "Loading overview\u2026",
+            mod_overview_ui(ns("overview"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'evidence'",
           ns = ns,
-          mod_disease_evidence_ui(ns("evidence"))
+          tab_panel_shell(
+            loading_label = "Loading disease evidence\u2026",
+            mod_disease_evidence_ui(ns("evidence"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'compare'",
           ns = ns,
-          mod_ot_comparison_ui(ns("compare"))
+          tab_panel_shell(
+            loading_label = "Loading compare evidence\u2026",
+            mod_ot_comparison_ui(ns("compare"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'pathways'",
           ns = ns,
-          mod_pathways_ui(ns("pathways"))
+          tab_panel_shell(
+            loading_label = "Loading pathways\u2026",
+            mod_pathways_ui(ns("pathways"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'literature'",
           ns = ns,
-          mod_literature_ui(ns("literature"))
+          tab_panel_shell(
+            loading_label = "Loading literature\u2026",
+            mod_literature_ui(ns("literature"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'structures'",
           ns = ns,
-          mod_structures_ui(ns("structures"))
+          tab_panel_shell(
+            loading_label = "Loading structures\u2026",
+            mod_structures_ui(ns("structures"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'research'",
           ns = ns,
-          mod_research_ui(ns("research"))
+          tab_panel_shell(
+            loading_label = "Loading notes and snapshots\u2026",
+            mod_research_ui(ns("research"))
+          )
         ),
         conditionalPanel(
           condition = "input.workspace_panel == 'overview' || input.workspace_panel == 'evidence'",
@@ -666,6 +690,11 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         })
       )
     })
+
+    keep_tab_outputs_visible(
+      output,
+      c("workspace_nav", "project_header", "project_tabs", "target_subnav", "project_stage", "targets")
+    )
 
     observeEvent(input$project_nav, {
       req(input$project_nav)

@@ -222,6 +222,30 @@ schedule_after_flush <- function(session, fun) {
   invisible(TRUE)
 }
 
+tab_panel_shell <- function(..., loading_label) {
+  div(
+    class = "tab-panel-shell",
+    div(class = "tab-loading-msg", role = "status", loading_label),
+    ...
+  )
+}
+
+as_live_viz <- function(html) {
+  if (!has_display_text(html)) {
+    return(NULL)
+  }
+  HTML(html)
+}
+
+# Hidden tab outputs re-execute by default when shown again. Keep the last
+# rendered HTML so revisiting Project/Pathways/etc. does not rebuild plots.
+keep_tab_outputs_visible <- function(output, ids) {
+  for (id in ids) {
+    try(outputOptions(output, id, suspendWhenHidden = FALSE), silent = TRUE)
+  }
+  invisible(NULL)
+}
+
 tab_button <- function(input_id, value, label, active = FALSE, data_tour = NULL) {
   tags$button(
     type = "button",

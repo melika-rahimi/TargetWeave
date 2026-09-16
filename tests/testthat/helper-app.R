@@ -81,6 +81,7 @@ source_app("R/ops/async.R")
 source_app("R/db/users.R")
 source_app("R/db/profiles.R")
 source_app("R/db/support.R")
+source_app("R/db/events.R")
 source_app("R/db/projects.R")
 source_app("R/db/targets.R")
 source_app("R/db/authz.R")
@@ -102,6 +103,7 @@ source_app("R/process/resolve_targets.R")
 source_app("R/process/process_overview.R")
 source_app("R/process/process_disease.R")
 source_app("R/process/process_ot_evidence.R")
+source_app("R/process/process_invalidation.R")
 source_app("R/process/process_ot_comparison.R")
 source_app("R/process/process_reactome.R")
 source_app("R/process/process_pathway_overlap.R")
@@ -109,7 +111,8 @@ source_app("R/process/process_literature.R")
 source_app("R/process/process_structure_coverage.R")
 source_app("R/process/process_structures.R")
 source_app("R/process/process_snapshots.R")
-source_app("R/process/process_invalidation.R")
+helper_env$target_set_stale_banner <- target_set_stale_banner
+helper_env$project_timeline_ui <- project_timeline_ui
 source_app("R/export/export_tables.R")
 source_app("R/export/export_manifest.R")
 source_app("R/export/export_dossier.R")
@@ -126,6 +129,20 @@ source_app("R/ui/ui_components.R")
 helper_env$tab_panel_shell <- tab_panel_shell
 helper_env$as_live_viz <- as_live_viz
 helper_env$keep_tab_outputs_visible <- keep_tab_outputs_visible
+helper_env$replace_shiny_modal <- replace_shiny_modal
+helper_env$exclusion_status_ui <- exclusion_status_ui
+helper_env$unresolved_exclusion_notice_ui <- unresolved_exclusion_notice_ui
+helper_env$interpretation_guidance_ui <- interpretation_guidance_ui
+source_app("R/ui/ui_evidence.R")
+helper_env$evidence_page_header <- evidence_page_header
+helper_env$evidence_section_header <- evidence_section_header
+helper_env$evidence_metric <- evidence_metric
+helper_env$evidence_summary_strip <- evidence_summary_strip
+helper_env$evidence_primary_surface <- evidence_primary_surface
+helper_env$evidence_details_disclosure <- evidence_details_disclosure
+helper_env$evidence_target_picker <- evidence_target_picker
+helper_env$evidence_target_switcher_ui <- evidence_target_switcher_ui
+helper_env$evidence_count_label <- evidence_count_label
 source_app("R/ui/ui_landing.R")
 source_app("R/ui/ui_tour.R")
 source_app("R/modules/mod_overview.R")
@@ -261,15 +278,25 @@ ncbi_fixture_perform <- function(
         stop("raw symbol search is not allowed")
       }
       year <- sub(".*mindate=([0-9]{4}).*", "\\1", url)
+      retmax_n <- NA_integer_
+      if (grepl("[?&]retmax=", url)) {
+        retmax_n <- suppressWarnings(as.integer(sub(".*[?&]retmax=([0-9]+).*", "\\1", url)))
+      }
       if (grepl("mindate=", url) && grepl("^[0-9]{4}$", year)) {
         n <- year_counts[[year]]
         if (is.null(n)) {
           n <- 3L
         }
-        payload <- list(
-          header = list(type = "esearch", version = "0.3"),
-          esearchresult = list(count = as.character(n))
-        )
+        is_count <- grepl("rettype=count", url) || identical(retmax_n, 0L)
+        if (isTRUE(is_count)) {
+          payload <- list(
+            header = list(type = "esearch", version = "0.3"),
+            esearchresult = list(count = as.character(n))
+          )
+        } else {
+          payload <- recent
+          payload$esearchresult$count <- as.character(n)
+        }
       } else if (grepl("retmax=15", url) || grepl("sort=pub", url)) {
         payload <- recent
       } else {

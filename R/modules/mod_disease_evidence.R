@@ -323,8 +323,7 @@ evidence_result_ui <- function(current, ns) {
       if (missing > 0) {
         p(class = "field-help", "Some evidence types had no score returned. That is distinct from a returned score of 0.")
       },
-      p(
-        class = "interpretation-note",
+      interpretation_guidance_ui(
         "These scores summarize aggregated Open Targets evidence. They are not probabilities of causality, therapeutic success, or clinical validity."
       )
     ),

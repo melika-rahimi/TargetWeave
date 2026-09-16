@@ -11,14 +11,22 @@
 # 3. Fetch live only for missing or expired pairs (and stale fallback on error).
 # 4. Sequential, not concurrent. Partial failure keeps other targets.
 
-comparison_signature <- function(project_row, confirmed_target_ids) {
-  if (is.null(project_row) || length(confirmed_target_ids) == 0) {
+comparison_signature <- function(project_row, target_rows) {
+  if (is.null(project_row)) {
+    return(NA_character_)
+  }
+  key <- if (is.data.frame(target_rows)) {
+    confirmed_scientific_target_set(target_rows)
+  } else {
+    paste(sort(as.character(target_rows)), collapse = ",")
+  }
+  if (!nzchar(key)) {
     return(NA_character_)
   }
   paste(
     as.character(project_row$id[[1]]),
     toupper(trimws(project_disease_ontology_id(project_row))),
-    paste(sort(as.character(confirmed_target_ids)), collapse = ","),
+    key,
     sep = "|"
   )
 }
@@ -40,8 +48,7 @@ should_retrieve_comparison <- function(
   if (isTRUE(force)) {
     return(TRUE)
   }
-  confirmed <- split_comparison_targets(target_rows)$confirmed
-  sig <- comparison_signature(project_row, confirmed$id)
+  sig <- comparison_signature(project_row, target_rows)
   !identical(as.character(last_signature %||% NA_character_), sig)
 }
 

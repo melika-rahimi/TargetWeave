@@ -7,6 +7,7 @@ NCBI_GENE_PUBMED_LINK <- "gene_pubmed"
 PUBMED_UID_RETRIEVAL_LIMIT <- 10000L
 LITERATURE_RECENT_N <- 15L
 LITERATURE_TREND_YEARS <- 10L
+LITERATURE_YEAR_PAGE_SIZE <- 25L
 PUBMED_TITLE_ABSTRACT_FIELD <- "Title/Abstract"
 
 .ncbi_rate_env <- new.env(parent = emptyenv())
@@ -149,24 +150,27 @@ fetch_gene_pubmed_history <- function(gene_id, perform = httr2::req_perform) {
   )
 }
 
-fetch_pubmed_esearch <- function(
+pubmed_esearch_query <- function(
   term,
   webenv = NULL,
   query_key = NULL,
   rettype = NULL,
   retmax = 0L,
+  retstart = 0L,
   sort = NULL,
   mindate = NULL,
   maxdate = NULL,
   datetype = NULL,
-  usehistory = FALSE,
-  perform = httr2::req_perform
+  usehistory = FALSE
 ) {
   query <- list(
     db = "pubmed",
     term = term,
-    retmax = as.integer(retmax)
+    retmax = as.character(as.integer(retmax %||% 0L))
   )
+  if (as.integer(retstart %||% 0L) > 0L) {
+    query$retstart <- as.integer(retstart)
+  }
   if (isTRUE(usehistory)) {
     query$usehistory <- "y"
   }
@@ -191,6 +195,36 @@ fetch_pubmed_esearch <- function(
   if (has_display_text(maxdate)) {
     query$maxdate <- maxdate
   }
+  query
+}
+
+fetch_pubmed_esearch <- function(
+  term,
+  webenv = NULL,
+  query_key = NULL,
+  rettype = NULL,
+  retmax = 0L,
+  retstart = 0L,
+  sort = NULL,
+  mindate = NULL,
+  maxdate = NULL,
+  datetype = NULL,
+  usehistory = FALSE,
+  perform = httr2::req_perform
+) {
+  query <- pubmed_esearch_query(
+    term = term,
+    webenv = webenv,
+    query_key = query_key,
+    rettype = rettype,
+    retmax = retmax,
+    retstart = retstart,
+    sort = sort,
+    mindate = mindate,
+    maxdate = maxdate,
+    datetype = datetype,
+    usehistory = usehistory
+  )
   eutils_get("esearch.fcgi", query = query, db_pool = NULL, perform = perform)
 }
 
@@ -221,16 +255,57 @@ esearch_result_node <- function(payload) {
   payload$esearchresult %||% payload$eSearchResult %||% payload
 }
 
-parse_esearch_count <- function(payload) {
+read_esearch_integer_field <- function(raw) {
+  if (is.null(raw) || length(raw) < 1L) {
+    return(NA_integer_)
+  }
+  value <- raw[[1]]
+  if (is.null(value) || length(value) != 1L || is.na(value) || (is.character(value) && !nzchar(trimws(value)))) {
+    return(NA_integer_)
+  }
+  parsed <- suppressWarnings(as.integer(value))
+  if (length(parsed) != 1L || is.na(parsed)) {
+    return(NA_integer_)
+  }
+  parsed
+}
+
+parse_esearch_count_fields <- function(payload) {
   node <- esearch_result_node(payload)
-  if (!is.list(node) || is.null(node$count)) {
-    return(list(ok = FALSE, count = NA_integer_, error = "Malformed ESearch count payload."))
+  empty <- list(total_count = NA_integer_, retmax = NA_integer_, id_count = 0L, count_present = FALSE)
+  if (!is.list(node)) {
+    return(empty)
   }
-  count <- suppressWarnings(as.integer(node$count[[1]]))
-  if (is.na(count) || count < 0L) {
-    return(list(ok = FALSE, count = NA_integer_, error = "ESearch count was not an integer."))
+  raw_count <- node$count
+  if (is.null(raw_count)) {
+    raw_count <- node$Count
   }
-  list(ok = TRUE, count = count, error = NULL)
+  ids <- unlist(node$idlist %||% node$IdList %||% list())
+  ids <- as.character(ids)
+  list(
+    total_count = read_esearch_integer_field(raw_count),
+    retmax = read_esearch_integer_field(node$retmax %||% node$RetMax),
+    id_count = length(ids[nzchar(ids)]),
+    count_present = !is.null(raw_count)
+  )
+}
+
+parse_esearch_total_count <- function(payload) {
+  fields <- parse_esearch_count_fields(payload)
+  count <- fields$total_count
+  if (!isTRUE(fields$count_present) || length(count) != 1L || is.na(count) || count < 0L) {
+    return(list(
+      ok = FALSE,
+      count = NA_integer_,
+      error = "ESearch total Count was missing.",
+      fields = fields
+    ))
+  }
+  list(ok = TRUE, count = count, error = NULL, fields = fields)
+}
+
+parse_esearch_count <- function(payload) {
+  parse_esearch_total_count(payload)
 }
 
 parse_esearch_ids <- function(payload) {
@@ -391,6 +466,58 @@ pubmed_year_from_date <- function(text) {
   NA_character_
 }
 
+decode_html_entities <- function(text) {
+  text <- as.character(text %||% "")
+  replacements <- c(
+    "&nbsp;" = " ",
+    "&lt;" = "<",
+    "&gt;" = ">",
+    "&quot;" = "\"",
+    "&apos;" = "'",
+    "&#39;" = "'"
+  )
+  for (i in seq_along(replacements)) {
+    text <- gsub(names(replacements)[[i]], replacements[[i]], text, fixed = TRUE)
+  }
+  repeat {
+    start <- regexpr("&#[xX]?[0-9A-Fa-f]+;", text, perl = TRUE)
+    if (start[[1]] < 0L) {
+      break
+    }
+    len <- attr(start, "match.length")[[1]]
+    token <- substr(text, start[[1]], start[[1]] + len - 1L)
+    hex <- grepl("^&#[xX]", token)
+    digits <- sub(";$", "", sub("^&#[xX]?", "", token))
+    code <- if (isTRUE(hex)) strtoi(digits, 16L) else suppressWarnings(as.integer(digits))
+    repl <- if (length(code) != 1L || is.na(code) || code < 1L || code > 0x10FFFF) {
+      ""
+    } else {
+      intToUtf8(code)
+    }
+    text <- paste0(
+      substr(text, 1L, start[[1]] - 1L),
+      repl,
+      substring(text, start[[1]] + len)
+    )
+  }
+  gsub("&amp;", "&", text, fixed = TRUE)
+}
+
+normalize_pubmed_title <- function(value) {
+  text <- as.character(value %||% "")
+  text <- gsub("(?is)<script[^>]*>.*?</script>", " ", text, perl = TRUE)
+  text <- gsub("(?is)<style[^>]*>.*?</style>", " ", text, perl = TRUE)
+  text <- gsub("<[^>]*>", " ", text)
+  text <- gsub("[[:cntrl:]]", " ", text)
+  text <- decode_html_entities(text)
+  text <- trimws(gsub("\\s+", " ", text))
+  if (!nzchar(text)) {
+    "Title not provided"
+  } else {
+    text
+  }
+}
+
 parse_pubmed_summaries <- function(payload) {
   rows <- empty_recent_records()
   result <- payload$result %||% payload
@@ -405,10 +532,7 @@ parse_pubmed_summaries <- function(payload) {
       next
     }
     pmid <- as.character(record$uid %||% uid)
-    title <- as.character(record$title %||% "")
-    if (!nzchar(title)) {
-      title <- "Title not provided"
-    }
+    title <- normalize_pubmed_title(record$title %||% "")
     journal <- as.character(record$source %||% record$fulljournalname %||% "")
     if (!nzchar(journal)) {
       journal <- "Journal not provided"

@@ -230,10 +230,10 @@ overview_body_ui <- function(overview, ns) {
       )
     },
     div(
-      class = "overview-header",
-      div(class = "eyebrow", "Target overview"),
+      class = "overview-header evidence-page-header",
+      p(class = "eyebrow", "Target overview"),
       h2(overview_display(identity$symbol, "Unknown symbol")),
-      p(class = "overview-protein-name", overview_display(identity$protein_name, "Name not provided"))
+      p(class = "overview-protein-name evidence-page-subtitle", overview_display(identity$protein_name, "Name not provided"))
     ),
     div(
       class = "overview-facts",
@@ -298,15 +298,13 @@ overview_body_ui <- function(overview, ns) {
     ),
     div(
       class = "overview-section overview-provenance",
-      h3("Source"),
-      div(
-        class = "provenance-grid",
-        provenance_card_ui("UniProt", overview$provenance$uniprot),
-        provenance_card_ui("Ensembl", overview$provenance$ensembl)
-      ),
-      tags$details(
-        class = "about-scores",
-        tags$summary("Technical provenance"),
+      evidence_details_disclosure(
+        "Technical provenance",
+        div(
+          class = "provenance-grid",
+          provenance_card_ui("UniProt", overview$provenance$uniprot),
+          provenance_card_ui("Ensembl", overview$provenance$ensembl)
+        ),
         p("Identifiers and retrieval status above are used for scientific tracing. Endpoint URLs and query identifiers are listed here."),
         if (!is.null(overview$provenance$uniprot$url)) {
           p(tags$a(href = overview$provenance$uniprot$url, target = "_blank", rel = "noopener noreferrer", overview$provenance$uniprot$url))

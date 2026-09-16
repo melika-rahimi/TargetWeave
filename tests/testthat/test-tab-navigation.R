@@ -87,7 +87,7 @@ test_that("live comparison and pathway UIs use HTML visuals, not plot placeholde
     ns,
     as.character(snap$comparison$model$targets$project_target_id)
   ))
-  expect_match(cmp, "tw-viz")
+  expect_match(cmp, "compare-matrix")
   expect_false(grepl("plot-container|shiny-plot-output", cmp))
 
   overlap <- build_pathway_overlap(list(
@@ -102,7 +102,7 @@ test_that("live comparison and pathway UIs use HTML visuals, not plot placeholde
     "shared",
     NULL
   ))
-  expect_match(path, "tw-matrix")
+  expect_match(path, "pathway-overlap-matrix")
   expect_false(grepl("shiny-plot-output", path))
 })
 
@@ -133,7 +133,7 @@ test_that("revisit with the same signature does not retrieve again", {
     TRUE,
     project,
     targets,
-    comparison_signature(project, targets$id)
+    comparison_signature(project, targets)
   ))
 })
 

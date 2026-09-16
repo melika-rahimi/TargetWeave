@@ -496,7 +496,7 @@ render_literature_html <- function(snapshot) {
           pmid <- as.character(recs$pmid[[i]])
           list(
             as_html(export_source_link(pmid, paste0("https://pubmed.ncbi.nlm.nih.gov/", pmid, "/"))),
-            recs$title[[i]],
+            normalize_pubmed_title(recs$title[[i]]),
             if ("first_author" %in% names(recs)) recs$first_author[[i]] else NA,
             if ("journal" %in% names(recs)) recs$journal[[i]] else NA,
             if ("publication_date" %in% names(recs)) recs$publication_date[[i]] else NA,

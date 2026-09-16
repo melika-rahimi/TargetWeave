@@ -31,10 +31,12 @@ build_app_ui <- function() {
       tags$link(
         rel = "stylesheet",
         type = "text/css",
-        href = "styles.css"
+        href = "styles.css?v=m12-5-pre-release-1"
       ),
       tags$script(src = "tour.js"),
-      tags$script(src = "auth.js"),
+      tags$script(src = "auth.js?v=enter-2"),
+      tags$script(src = "modals.js"),
+      tags$script(src = "literature.js?v=year-1"),
       tags$script(src = "landing.js?v=demo-start")
     ),
     shiny::useBusyIndicators(spinners = FALSE, pulse = FALSE, fade = FALSE),

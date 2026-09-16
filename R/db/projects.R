@@ -87,7 +87,9 @@ list_projects <- function(db_pool, user_id, include_archived = FALSE) {
       p.updated_at,
       COUNT(pt.id)::integer AS target_count
     FROM projects p
-    LEFT JOIN project_targets pt ON pt.project_id = p.id
+    LEFT JOIN project_targets pt
+      ON pt.project_id = p.id
+     AND pt.removed_at IS NULL
     WHERE p.user_id = $1::uuid
   "
 
@@ -161,7 +163,10 @@ create_project <- function(
         )
       )
 
+      insert_project_event(con, project_id, "PROJECT_CREATED", user_id)
+
       for (target_text in checked$target_inputs) {
+        target_id <- uuid::UUIDgenerate()
         DBI::dbExecute(
           con,
           "
@@ -174,10 +179,18 @@ create_project <- function(
           VALUES ($1::uuid, $2::uuid, $3, 'unresolved')
           ",
           params = list(
-            uuid::UUIDgenerate(),
+            target_id,
             project_id,
             target_text
           )
+        )
+        insert_project_event(
+          con,
+          project_id,
+          "TARGET_ADDED",
+          user_id,
+          project_target_id = target_id,
+          metadata = list(label = target_text, input_text = target_text)
         )
       }
 
@@ -264,26 +277,44 @@ confirm_project_disease <- function(
     ))
   }
 
-  affected <- DBI::dbExecute(
-    db_pool,
-    "
-    UPDATE projects
-    SET disease_ontology_id = $3,
-        disease_name = $4,
-        disease_resolution_status = 'confirmed',
-        disease_confirmed_at = NOW(),
-        updated_at = NOW()
-    WHERE id = $1::uuid
-      AND user_id = $2::uuid
-      AND (
-        disease_resolution_status IS NULL
-        OR disease_resolution_status <> 'confirmed'
+  tx <- tryCatch(
+    pool::poolWithTransaction(db_pool, function(con) {
+      affected <- DBI::dbExecute(
+        con,
+        "
+        UPDATE projects
+        SET disease_ontology_id = $3,
+            disease_name = $4,
+            disease_resolution_status = 'confirmed',
+            disease_confirmed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1::uuid
+          AND user_id = $2::uuid
+          AND (
+            disease_resolution_status IS NULL
+            OR disease_resolution_status <> 'confirmed'
+          )
+        ",
+        params = list(project_id, user_id, disease_ontology_id, disease_name)
       )
-    ",
-    params = list(project_id, user_id, disease_ontology_id, disease_name)
+      if (affected != 1) {
+        stop("confirm_project_disease_no_row", call. = FALSE)
+      }
+      insert_project_event(
+        con,
+        project_id,
+        "DISEASE_IDENTITY_CONFIRMED",
+        user_id,
+        metadata = list(
+          disease_name = disease_name,
+          disease_ontology_id = disease_ontology_id
+        )
+      )
+      TRUE
+    }),
+    error = function(e) e
   )
-
-  if (affected != 1) {
+  if (inherits(tx, "error")) {
     return(list(ok = FALSE, message = "The disease context could not be confirmed."))
   }
 

@@ -79,13 +79,44 @@ cache_key_pubmed_corpus <- function(gene_id, query_signature) {
   )
 }
 
-cache_key_pubmed_trend <- function(gene_id, query_signature, start_year, end_year) {
+PUBMED_TREND_CACHE_NAMESPACE <- "pubmed:trend:v3"
+
+cache_key_pubmed_trend_legacy <- function(gene_id, query_signature, start_year, end_year) {
   sprintf(
     "pubmed:trend:%s:%s:%s:%s",
     trimws(as.character(gene_id)),
     query_signature,
     as.integer(start_year),
     as.integer(end_year)
+  )
+}
+
+cache_key_pubmed_trend_v2 <- function(gene_id, query_signature, start_year, end_year) {
+  sprintf(
+    "pubmed:trend:v2:%s:%s:%s:%s",
+    trimws(as.character(gene_id)),
+    query_signature,
+    as.integer(start_year),
+    as.integer(end_year)
+  )
+}
+
+cache_key_pubmed_trend <- function(gene_id, query_signature, start_year, end_year) {
+  sprintf(
+    "pubmed:trend:v3:%s:%s:%s:%s",
+    trimws(as.character(gene_id)),
+    query_signature,
+    as.integer(start_year),
+    as.integer(end_year)
+  )
+}
+
+cache_key_pubmed_year_records <- function(gene_id, query_signature, year) {
+  sprintf(
+    "pubmed:year-records:%s:%s:%s",
+    trimws(as.character(gene_id)),
+    query_signature,
+    as.integer(year)
   )
 }
 

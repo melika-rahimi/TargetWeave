@@ -69,7 +69,7 @@ test_that("disease wording reset clears live identity but not snapshots or targe
   expect_equal(nrow(notes), 1)
 })
 
-test_that("removing a target requires note confirmation and leaves snapshots", {
+test_that("removing a target requires confirmation and leaves snapshots and notes", {
   db_pool <- skip_if_no_postgres()
   on.exit(try(pool::poolClose(db_pool), silent = TRUE), add = TRUE)
   ensure_schema(db_pool)
@@ -114,7 +114,7 @@ test_that("removing a target requires note confirmation and leaves snapshots", {
     frozen$target_identity$model$n_targets,
     original$target_identity$model$n_targets
   )
-  expect_equal(nrow(list_research_notes(db_pool, seed$project_id, seed$owner$id, scope = "target")), 0)
+  expect_equal(nrow(list_research_notes(db_pool, seed$project_id, seed$owner$id, scope = "target")), 1)
 })
 
 test_that("reset confirmed identity does not mutate snapshots", {

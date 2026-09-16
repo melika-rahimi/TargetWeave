@@ -39,13 +39,7 @@ should_retrieve_pathways <- function(
 }
 
 pathway_signature <- function(target_rows) {
-  confirmed <- split_pathway_targets(target_rows)$confirmed
-  ids <- if (is.null(confirmed) || nrow(confirmed) == 0) {
-    character()
-  } else {
-    sort(as.character(confirmed$id))
-  }
-  paste(ids, collapse = "|")
+  confirmed_scientific_target_set(target_rows)
 }
 
 split_pathway_targets <- function(target_rows) {
@@ -190,6 +184,7 @@ retrieve_project_pathways <- function(
       excluded[[length(excluded) + 1L]] <- list(
         project_target_id = as.character(row$id[[1]]),
         symbol = target_reactome_label(row),
+        input_text = as.character(row$input_text[[1]] %||% ""),
         reason = "unconfirmed",
         message = sprintf(
           "%s is not confirmed, so Reactome pathway membership was not retrieved.",

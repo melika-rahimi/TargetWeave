@@ -69,6 +69,18 @@ ensure_schema <- function(db_pool) {
       ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ NULL
     ",
     "
+    ALTER TABLE project_targets
+      ADD COLUMN IF NOT EXISTS removed_at TIMESTAMPTZ NULL
+    ",
+    "
+    ALTER TABLE project_targets
+      ADD COLUMN IF NOT EXISTS removed_by UUID NULL REFERENCES users(id)
+    ",
+    "
+    ALTER TABLE projects
+      ADD COLUMN IF NOT EXISTS target_set_revision INTEGER NOT NULL DEFAULT 1
+    ",
+    "
     ALTER TABLE projects
       ADD COLUMN IF NOT EXISTS disease_ontology_id TEXT NULL
     ",
@@ -233,6 +245,38 @@ ensure_research_record_tables <- function(db_pool) {
   DBI::dbExecute(
     db_pool,
     "
+    CREATE TABLE IF NOT EXISTS project_events (
+      id UUID PRIMARY KEY,
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      actor_user_id UUID NOT NULL REFERENCES users(id),
+      project_target_id UUID NULL REFERENCES project_targets(id) ON DELETE SET NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT project_events_type_check
+        CHECK (
+          event_type IN (
+            'PROJECT_CREATED',
+            'TARGET_ADDED',
+            'TARGET_REMOVED',
+            'TARGET_IDENTITY_CONFIRMED',
+            'DISEASE_IDENTITY_CONFIRMED',
+            'SNAPSHOT_CREATED'
+          )
+        )
+    )
+    "
+  )
+  DBI::dbExecute(
+    db_pool,
+    "
+    CREATE INDEX IF NOT EXISTS idx_project_events_project
+      ON project_events(project_id, created_at DESC)
+    "
+  )
+  DBI::dbExecute(
+    db_pool,
+    "
     CREATE TABLE IF NOT EXISTS evidence_snapshots (
       id UUID PRIMARY KEY,
       project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -366,10 +410,12 @@ unique_target_index_statements <- function() {
         ON project_targets(project_id, ensembl_gene_id)
         WHERE resolution_status = 'confirmed'
           AND ensembl_gene_id IS NOT NULL
+          AND removed_at IS NULL
     ",
     idx_project_targets_input_normalized = "
       CREATE UNIQUE INDEX IF NOT EXISTS idx_project_targets_input_normalized
         ON project_targets (project_id, (lower(btrim(input_text))))
+        WHERE removed_at IS NULL
     ",
     idx_project_targets_confirmed_ensembl_canonical = "
       CREATE UNIQUE INDEX IF NOT EXISTS idx_project_targets_confirmed_ensembl_canonical
@@ -379,6 +425,7 @@ unique_target_index_statements <- function() {
         )
         WHERE resolution_status = 'confirmed'
           AND ensembl_gene_id IS NOT NULL
+          AND removed_at IS NULL
     "
   )
 }
@@ -458,6 +505,7 @@ list_duplicate_project_targets <- function(db_pool) {
             id ASC
         ) AS rn
       FROM project_targets
+      WHERE removed_at IS NULL
     ) ranked
     WHERE ranked.rn > 1
     "
@@ -500,6 +548,7 @@ list_duplicate_project_targets <- function(db_pool) {
       FROM project_targets
       WHERE resolution_status = 'confirmed'
         AND ensembl_gene_id IS NOT NULL
+        AND removed_at IS NULL
     ) ranked
     WHERE ranked.rn > 1
     "

@@ -36,10 +36,16 @@ parse_target_input <- function(text) {
   dedupe_target_inputs(pieces)
 }
 
-list_project_targets <- function(db_pool, project_id, user_id) {
+list_project_targets <- function(db_pool, project_id, user_id, include_removed = FALSE) {
+  removed_sql <- if (isTRUE(include_removed)) {
+    ""
+  } else {
+    "AND pt.removed_at IS NULL"
+  }
   DBI::dbGetQuery(
     db_pool,
-    "
+    paste0(
+      "
     SELECT
       pt.id::text AS id,
       pt.input_text,
@@ -50,13 +56,18 @@ list_project_targets <- function(db_pool, project_id, user_id) {
       pt.resolution_status,
       pt.resolution_payload::text AS resolution_payload,
       pt.confirmed_at,
-      pt.created_at
+      pt.created_at,
+      pt.removed_at
     FROM project_targets pt
     INNER JOIN projects p ON p.id = pt.project_id
     WHERE pt.project_id = $1::uuid
       AND p.user_id = $2::uuid
+      ",
+      removed_sql,
+      "
     ORDER BY pt.created_at ASC
-    ",
+    "
+    ),
     params = list(project_id, user_id)
   )
 }
@@ -76,11 +87,13 @@ get_owned_target <- function(db_pool, target_id, user_id) {
       pt.hgnc_id,
       pt.resolution_status,
       pt.resolution_payload::text AS resolution_payload,
-      pt.confirmed_at
+      pt.confirmed_at,
+      pt.removed_at
     FROM project_targets pt
     INNER JOIN projects p ON p.id = pt.project_id
     WHERE pt.id = $1::uuid
       AND p.user_id = $2::uuid
+      AND pt.removed_at IS NULL
     ",
     params = list(target_id, user_id)
   )
@@ -136,6 +149,7 @@ save_resolution_lookup <- function(db_pool, target_id, user_id, status, payload)
     WHERE pt.project_id = p.id
       AND pt.id = $1::uuid
       AND p.user_id = $2::uuid
+      AND pt.removed_at IS NULL
       AND pt.resolution_status <> 'confirmed'
     ",
     params = list(target_id, user_id, status, payload_json)
@@ -171,46 +185,98 @@ confirm_project_target <- function(
     ))
   }
 
-  updated <- db_execute_guarded(
-    db_pool,
-    "
-    UPDATE project_targets pt
-    SET display_symbol = $3,
-        ensembl_gene_id = $4,
-        uniprot_accession = $5,
-        hgnc_id = $6,
-        resolution_status = 'confirmed',
-        confirmed_at = NOW()
-    FROM projects p
-    WHERE pt.project_id = p.id
-      AND pt.id = $1::uuid
-      AND p.user_id = $2::uuid
-      AND pt.resolution_status IN ('unresolved', 'ambiguous')
-    ",
-    list(
-      target_id,
-      user_id,
-      display_symbol,
-      ensembl_gene_id,
-      uniprot_accession,
-      hgnc_id
-    )
-  )
-
-  if (inherits(updated, "error")) {
-    return(list(
-      ok = FALSE,
-      message = unique_violation_message(
-        updated,
-        "The target could not be confirmed."
-      )
-    ))
+  owned <- get_owned_target(db_pool, target_id, user_id)
+  if (is.null(owned)) {
+    return(list(ok = FALSE, message = "The target could not be confirmed."))
   }
 
-  if (updated != 1) {
+  duplicate <- DBI::dbGetQuery(
+    db_pool,
+    "
+    SELECT pt.id::text AS id
+    FROM project_targets pt
+    INNER JOIN projects p ON p.id = pt.project_id
+    WHERE p.user_id = $1::uuid
+      AND pt.project_id = $2::uuid
+      AND pt.id <> $3::uuid
+      AND pt.removed_at IS NULL
+      AND pt.resolution_status = 'confirmed'
+      AND regexp_replace(upper(pt.ensembl_gene_id), '\\.[0-9]+$', '') = $4
+    LIMIT 1
+    ",
+    params = list(user_id, owned$project_id[[1]], target_id, ensembl_gene_id)
+  )
+  if (nrow(duplicate) == 1) {
+    return(list(ok = FALSE, message = "This Ensembl gene is already confirmed in the project."))
+  }
+
+  tx <- tryCatch(
+    pool::poolWithTransaction(db_pool, function(con) {
+      updated <- DBI::dbExecute(
+        con,
+        "
+        UPDATE project_targets pt
+        SET display_symbol = $3,
+            ensembl_gene_id = $4,
+            uniprot_accession = $5,
+            hgnc_id = $6,
+            resolution_status = 'confirmed',
+            confirmed_at = NOW()
+        FROM projects p
+        WHERE pt.project_id = p.id
+          AND pt.id = $1::uuid
+          AND p.user_id = $2::uuid
+          AND pt.removed_at IS NULL
+          AND pt.resolution_status IN ('unresolved', 'ambiguous')
+        ",
+        params = list(
+          target_id,
+          user_id,
+          display_symbol,
+          ensembl_gene_id,
+          uniprot_accession,
+          hgnc_id
+        )
+      )
+      if (updated != 1) {
+        stop("confirm_project_target_no_row", call. = FALSE)
+      }
+      bumped <- DBI::dbExecute(
+        con,
+        "
+        UPDATE projects
+        SET target_set_revision = target_set_revision + 1,
+            updated_at = NOW()
+        WHERE id = $1::uuid
+        ",
+        params = list(owned$project_id[[1]])
+      )
+      if (bumped != 1) {
+        stop("confirm_project_target_no_row", call. = FALSE)
+      }
+      insert_project_event(
+        con,
+        owned$project_id[[1]],
+        "TARGET_IDENTITY_CONFIRMED",
+        user_id,
+        project_target_id = target_id,
+        metadata = list(
+          label = display_symbol,
+          ensembl_gene_id = ensembl_gene_id,
+          uniprot_accession = uniprot_accession
+        )
+      )
+      TRUE
+    }),
+    error = function(e) e
+  )
+  if (inherits(tx, "error")) {
+    if (identical(conditionMessage(tx), "confirm_project_target_no_row")) {
+      return(list(ok = FALSE, message = "The target could not be confirmed."))
+    }
     return(list(
       ok = FALSE,
-      message = "The target could not be confirmed."
+      message = unique_violation_message(tx, "The target could not be confirmed.")
     ))
   }
 
@@ -244,6 +310,7 @@ update_target_input_text <- function(db_pool, target_id, user_id, input_text) {
     WHERE pt.project_id = p.id
       AND pt.id = $1::uuid
       AND p.user_id = $2::uuid
+      AND pt.removed_at IS NULL
       AND pt.resolution_status <> 'confirmed'
     ",
     list(target_id, user_id, input_text)
@@ -280,6 +347,10 @@ add_project_target <- function(db_pool, project_id, user_id, input_text) {
     return(len)
   }
   existing <- list_project_targets(db_pool, project_id, user_id)
+  key <- normalize_target_input_key(input_text)
+  if (any(normalize_target_input_key(existing$input_text) == key)) {
+    return(list(ok = FALSE, message = "This project already has that target string."))
+  }
   if (nrow(existing) >= get_app_config()$max_targets) {
     return(list(
       ok = FALSE,
@@ -290,27 +361,105 @@ add_project_target <- function(db_pool, project_id, user_id, input_text) {
     ))
   }
 
-  inserted <- db_execute_guarded(
+  removed <- DBI::dbGetQuery(
     db_pool,
     "
-    INSERT INTO project_targets (id, project_id, input_text, resolution_status)
-    SELECT $1::uuid, p.id, $3, 'unresolved'
-    FROM projects p
-    WHERE p.id = $2::uuid
-      AND p.user_id = $4::uuid
+    SELECT pt.id::text AS id
+    FROM project_targets pt
+    INNER JOIN projects p ON p.id = pt.project_id
+    WHERE pt.project_id = $1::uuid
+      AND p.user_id = $2::uuid
+      AND pt.removed_at IS NOT NULL
+      AND lower(btrim(pt.input_text)) = $3
+    ORDER BY pt.removed_at DESC
+    LIMIT 1
     ",
-    list(uuid::UUIDgenerate(), project_id, input_text, user_id)
+    params = list(project_id, user_id, key)
   )
-  if (inherits(inserted, "error")) {
+
+  if (nrow(removed) == 1) {
+    tx <- tryCatch(
+      pool::poolWithTransaction(db_pool, function(con) {
+        revived <- DBI::dbExecute(
+          con,
+          "
+          UPDATE project_targets pt
+          SET removed_at = NULL,
+              removed_by = NULL,
+              input_text = $4,
+              resolution_status = 'unresolved',
+              resolution_payload = NULL,
+              display_symbol = NULL,
+              ensembl_gene_id = NULL,
+              uniprot_accession = NULL,
+              hgnc_id = NULL,
+              confirmed_at = NULL
+          FROM projects p
+          WHERE pt.project_id = p.id
+            AND pt.id = $1::uuid
+            AND p.id = $2::uuid
+            AND p.user_id = $3::uuid
+            AND pt.removed_at IS NOT NULL
+          ",
+          params = list(removed$id[[1]], project_id, user_id, input_text)
+        )
+        if (revived != 1) {
+          stop("add_project_target_failed", call. = FALSE)
+        }
+        insert_project_event(
+          con,
+          project_id,
+          "TARGET_ADDED",
+          user_id,
+          project_target_id = removed$id[[1]],
+          metadata = list(label = input_text, input_text = input_text, revived = TRUE)
+        )
+        TRUE
+      }),
+      error = function(e) e
+    )
+    if (inherits(tx, "error")) {
+      return(list(ok = FALSE, message = "The target could not be added."))
+    }
+    return(list(ok = TRUE, target_id = removed$id[[1]], revived = TRUE, invalidation = live_invalidation_event("target")))
+  }
+
+  new_id <- uuid::UUIDgenerate()
+  tx <- tryCatch(
+    pool::poolWithTransaction(db_pool, function(con) {
+      inserted <- DBI::dbExecute(
+        con,
+        "
+        INSERT INTO project_targets (id, project_id, input_text, resolution_status)
+        SELECT $1::uuid, p.id, $3, 'unresolved'
+        FROM projects p
+        WHERE p.id = $2::uuid
+          AND p.user_id = $4::uuid
+        ",
+        params = list(new_id, project_id, input_text, user_id)
+      )
+      if (inserted != 1) {
+        stop("add_project_target_failed", call. = FALSE)
+      }
+      insert_project_event(
+        con,
+        project_id,
+        "TARGET_ADDED",
+        user_id,
+        project_target_id = new_id,
+        metadata = list(label = input_text, input_text = input_text)
+      )
+      TRUE
+    }),
+    error = function(e) e
+  )
+  if (inherits(tx, "error")) {
     return(list(
       ok = FALSE,
-      message = unique_violation_message(inserted, "The target could not be added.")
+      message = unique_violation_message(tx, "The target could not be added.")
     ))
   }
-  if (inserted != 1) {
-    return(list(ok = FALSE, message = "The target could not be added."))
-  }
-  list(ok = TRUE, invalidation = live_invalidation_event("target"))
+  list(ok = TRUE, target_id = new_id, revived = FALSE, invalidation = live_invalidation_event("target"))
 }
 
 remove_project_target <- function(
@@ -318,8 +467,10 @@ remove_project_target <- function(
   project_id,
   user_id,
   target_id,
-  confirm_note_deletion = FALSE
+  confirm_note_deletion = FALSE,
+  confirm_removal = NULL
 ) {
+  confirm_ok <- isTRUE(confirm_removal) || isTRUE(confirm_note_deletion)
   row <- get_owned_target(db_pool, target_id, user_id)
   if (is.null(row) || !identical(as.character(row$project_id[[1]]), as.character(project_id))) {
     return(list(ok = FALSE, message = "Target was not found in this project."))
@@ -328,6 +479,12 @@ remove_project_target <- function(
   if (nrow(existing) <= get_app_config()$min_targets) {
     return(list(ok = FALSE, message = "A project must keep at least one candidate target."))
   }
+  label <- if (identical(as.character(row$resolution_status[[1]]), "confirmed") &&
+    has_display_text(row$display_symbol[[1]])) {
+    row$display_symbol[[1]]
+  } else {
+    row$input_text[[1]]
+  }
   notes <- list_research_notes(
     db_pool,
     project_id,
@@ -335,32 +492,78 @@ remove_project_target <- function(
     scope = "target",
     project_target_id = target_id
   )
-  if (nrow(notes) > 0 && !isTRUE(confirm_note_deletion)) {
+  if (!confirm_ok) {
+    extra <- if (nrow(notes) > 0) {
+      sprintf(
+        " %s live target note%s will stay attached and return if this target is added again.",
+        nrow(notes),
+        if (nrow(notes) == 1L) "" else "s"
+      )
+    } else {
+      ""
+    }
     return(list(
       ok = FALSE,
       needs_confirmation = TRUE,
       note_count = nrow(notes),
-      message = sprintf(
-        "Removing this target will delete %s live target note%s. Snapshots are not changed.",
-        nrow(notes),
-        if (nrow(notes) == 1L) "" else "s"
+      message = paste0(
+        "This removes ",
+        label,
+        " from the live project. Snapshots and history are not changed.",
+        extra
       )
     ))
   }
 
-  deleted <- DBI::dbExecute(
-    db_pool,
-    "
-    DELETE FROM project_targets pt
-    USING projects p
-    WHERE pt.project_id = p.id
-      AND pt.id = $1::uuid
-      AND p.id = $2::uuid
-      AND p.user_id = $3::uuid
-    ",
-    params = list(target_id, project_id, user_id)
+  was_confirmed <- identical(as.character(row$resolution_status[[1]]), "confirmed")
+  tx <- tryCatch(
+    pool::poolWithTransaction(db_pool, function(con) {
+      removed <- DBI::dbExecute(
+        con,
+        "
+        UPDATE project_targets pt
+        SET removed_at = NOW(),
+            removed_by = $3::uuid
+        FROM projects p
+        WHERE pt.project_id = p.id
+          AND pt.id = $1::uuid
+          AND p.id = $2::uuid
+          AND p.user_id = $3::uuid
+          AND pt.removed_at IS NULL
+        ",
+        params = list(target_id, project_id, user_id)
+      )
+      if (removed != 1) {
+        stop("remove_project_target_failed", call. = FALSE)
+      }
+      if (isTRUE(was_confirmed)) {
+        bumped <- DBI::dbExecute(
+          con,
+          "
+          UPDATE projects
+          SET target_set_revision = target_set_revision + 1,
+              updated_at = NOW()
+          WHERE id = $1::uuid
+          ",
+          params = list(project_id)
+        )
+        if (bumped != 1) {
+          stop("remove_project_target_failed", call. = FALSE)
+        }
+      }
+      insert_project_event(
+        con,
+        project_id,
+        "TARGET_REMOVED",
+        user_id,
+        project_target_id = target_id,
+        metadata = list(label = label)
+      )
+      TRUE
+    }),
+    error = function(e) e
   )
-  if (deleted != 1) {
+  if (inherits(tx, "error")) {
     return(list(ok = FALSE, message = "The target could not be removed."))
   }
   list(ok = TRUE, invalidation = live_invalidation_event("target"))
@@ -382,12 +585,25 @@ reset_confirmed_target <- function(db_pool, target_id, user_id) {
     WHERE pt.project_id = p.id
       AND pt.id = $1::uuid
       AND p.user_id = $2::uuid
+      AND pt.removed_at IS NULL
       AND pt.resolution_status = 'confirmed'
     ",
     params = list(target_id, user_id)
   )
   if (updated != 1) {
     return(list(ok = FALSE, message = "The confirmed identity could not be reset."))
+  }
+  row <- DBI::dbGetQuery(
+    db_pool,
+    "
+    SELECT project_id::text AS project_id
+    FROM project_targets
+    WHERE id = $1::uuid
+    ",
+    params = list(target_id)
+  )
+  if (nrow(row) == 1) {
+    bump_project_target_set_revision(db_pool, row$project_id[[1]])
   }
   list(ok = TRUE, invalidation = live_invalidation_event("target"))
 }

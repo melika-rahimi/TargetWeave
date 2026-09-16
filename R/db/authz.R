@@ -24,7 +24,8 @@ get_owned_project <- function(db_pool, project_id, user_id) {
       disease_confirmed_at,
       status,
       created_at,
-      updated_at
+      updated_at,
+      target_set_revision
     FROM projects
     WHERE id = $1::uuid
       AND user_id = $2::uuid

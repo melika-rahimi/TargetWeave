@@ -62,7 +62,7 @@ test_that("target status labels remain readable without relying on color", {
   expect_equal(resolution_status_label("ambiguous"), "Ambiguous")
   expect_match(resolution_status_class("confirmed"), "status-pill")
   css <- paste(readLines(file.path(app_root(), "www", "styles.css")), collapse = "\n")
-  expect_match(css, "\\.target-select \\.status-pill[[:space:]]*\\{[^}]*align-self:\\s*flex-start")
+  expect_match(css, "\\.target-select \\.status-pill[[:space:]]*\\{[^}]*align-self:\\s*center")
 })
 
 test_that("workspace canvas is a cool light neutral and breadcrumbs are not sticky", {

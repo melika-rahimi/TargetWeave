@@ -164,6 +164,13 @@ insert_evidence_snapshot_row <- function(db_pool, payload) {
         encoded$capture_summary
       )
     )
+    insert_project_event(
+      conn,
+      payload$project_id,
+      "SNAPSHOT_CREATED",
+      payload$user_id,
+      metadata = list(name = payload$name, snapshot_id = as.character(snapshot_id))
+    )
   })
   list(ok = TRUE, snapshot_id = snapshot_id)
 }

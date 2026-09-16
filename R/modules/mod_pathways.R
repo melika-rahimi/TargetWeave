@@ -92,6 +92,9 @@ mod_pathways_server <- function(
         return()
       }
 
+      if (suppress_auto_retrieve_while_stale(isolate(pathway_result()), "pathways", force = force)) {
+        return()
+      }
       if (!should_retrieve_pathways(TRUE, targets, isolate(last_fetch_signature()), force = force)) {
         return()
       }
@@ -113,12 +116,23 @@ mod_pathways_server <- function(
         }
         previous <- last_fetch_signature()
         next_sig <- pathway_signature(target_rows())
-        if (live_signature_stale(previous, next_sig)) {
-          pathway_result(NULL)
-          last_fetch_signature(NA_character_)
-          visual_ids(character())
+        held <- hold_stale_multi_target_result(
+          pathway_result(),
+          previous,
+          next_sig,
+          "pathways"
+        )
+        if (isTRUE(held$changed)) {
+          pathway_result(held$current)
+          if (is.null(held$current)) {
+            last_fetch_signature(NA_character_)
+            visual_ids(character())
+          }
         }
         if (!isTRUE(isolate(panel_active()))) {
+          return()
+        }
+        if (isTRUE(held$suppress_auto_retrieve)) {
           return()
         }
         start_pathways()
@@ -130,6 +144,10 @@ mod_pathways_server <- function(
       if (isTRUE(panel_active())) {
         start_pathways()
       }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$refresh_pathways, {
+      start_pathways(force = TRUE)
     }, ignoreInit = TRUE)
 
     observeEvent(input$pathway_include, {
@@ -210,91 +228,192 @@ pathways_result_ui <- function(
   if (n_selected < 2L) {
     filter_choice <- "all"
   }
+  visible <- filter_pathway_visual(
+    overlap,
+    selected_ids,
+    shared_only = identical(filter_choice, "shared")
+  )
+  n_unique <- nrow(overlap$pathways)
+  n_shared <- if (n_unique == 0L) {
+    0L
+  } else {
+    sum(is_shared_pathway(overlap$pathways$matched_target_count))
+  }
+  shell_class <- paste(
+    c("pathway-shell", if (isTRUE(current$stale_target_set)) "is-stale"),
+    collapse = " "
+  )
 
   tagList(
+    target_set_stale_banner(ns, current, "refresh_pathways", "Refresh pathways"),
     div(
-      class = "evidence-pair",
-      h2("Pathways"),
-      p(
-        class = "panel-intro",
-        "Reactome pathway membership and overlap for confirmed targets in this investigation."
-      )
-    ),
-    p(
-      class = "interpretation-note",
-      "Reactome membership indicates that a target is annotated to a pathway in Reactome. Shared membership does not by itself imply direct interaction, pathway activity, disease causality, or therapeutic relevance."
-    ),
-    if (length(overlap$excluded_targets) > 0) {
-      div(
-        class = "form-message",
-        paste(
-          vapply(overlap$excluded_targets, function(item) item$message, character(1)),
-          collapse = " "
+      class = shell_class,
+      evidence_page_header(
+        "Pathways",
+        "Reactome lowest-level pathway membership for confirmed targets in this investigation."
+      ),
+      interpretation_guidance_ui(
+        p("Reactome membership indicates that a target is annotated to a pathway in Reactome. It does not mean the pathway is active."),
+        p("Pathway count is not a measure of target importance. Shared membership does not by itself imply direct interaction, disease causality, or therapeutic relevance."),
+        p("A pathway that is not returned is not evidence that the biology is absent.")
+      ),
+      exclusion_status_ui(overlap$excluded_targets, overlap$failures),
+      evidence_summary_strip(
+        aria_label = "Pathway membership context",
+        evidence_metric(
+          "Confirmed targets included",
+          nrow(overlap$targets),
+          "Confirmed identities with a Reactome retrieval attempt in this result."
+        ),
+        evidence_metric(
+          "Unique Reactome pathways",
+          n_unique,
+          "Distinct Reactome pathway identifiers in the retrieved membership set."
+        ),
+        evidence_metric(
+          "Shared pathways across 2+ targets",
+          n_shared,
+          "Pathways with membership for at least two retrieved targets. Membership count only."
         )
-      )
-    },
-    if (length(overlap$failures) > 0) {
-      div(
-        class = "form-message error",
-        paste(
-          vapply(overlap$failures, function(item) item$message, character(1)),
-          collapse = " "
+      ),
+      if (nrow(overlap$targets) > 0) {
+        div(
+          class = "pathway-include",
+          checkboxGroupInput(
+            ns("pathway_include"),
+            "Include confirmed targets",
+            choices = ids,
+            selected = selected_ids,
+            inline = TRUE
+          )
         )
-      )
-    },
-    if (nrow(overlap$targets) > 0) {
-      checkboxGroupInput(
-        ns("pathway_include"),
-        "Include confirmed targets",
-        choices = ids,
-        selected = selected_ids,
-        inline = TRUE
-      )
-    },
-    if (n_selected < 2L) {
+      },
+      if (n_selected < 2L) {
+        p(
+          class = "field-help",
+          "Overlap becomes available with at least two confirmed targets that have retrieved membership."
+        )
+      },
+      if (n_selected >= 2L) {
+        div(
+          class = "pathway-matrix-filter",
+          radioButtons(
+            ns("pathway_filter"),
+            "Matrix rows",
+            choices = c(
+              "Shared pathways" = "shared",
+              "All memberships" = "all"
+            ),
+            selected = filter_choice,
+            inline = TRUE
+          )
+        )
+      },
+      evidence_primary_surface(
+        evidence_section_header(
+          "Pathway membership overlap",
+          paste(
+            "Display sort is matched-target count, then pathway name. This is not a biological ranking.",
+            "\u25CF = Reactome membership present; \u2014 = not present in the retrieved membership set."
+          )
+        ),
+        pathway_overlap_matrix_ui(visible)
+      ),
+      pathway_detail_ui(overlap, inspect_id),
+      evidence_details_disclosure(
+        "View pathway list",
+        pathway_table_ui(overlap, ns, query)
+      ),
+      pathway_provenance_ui(overlap)
+    )
+  )
+}
+
+pathway_member_lookup <- function(matrix, pathway_id, project_target_id) {
+  if (is.null(matrix) || nrow(matrix) == 0) {
+    return(NA)
+  }
+  hit <- matrix[
+    matrix$pathway_id == pathway_id & matrix$project_target_id == project_target_id,
+    ,
+    drop = FALSE
+  ]
+  if (nrow(hit) == 0) {
+    return(NA)
+  }
+  isTRUE(hit$is_member[[1]])
+}
+
+pathway_overlap_matrix_ui <- function(visible) {
+  pathways <- visible$pathways_visible
+  targets <- visible$targets_visible
+  matrix <- visible$membership_matrix_visible
+  n_hidden <- as.integer(visible$n_hidden %||% 0L)
+  if (is.null(pathways) || nrow(pathways) == 0 || is.null(targets) || nrow(targets) == 0) {
+    return(p(class = "field-help", "No Reactome pathway memberships were returned for this display selection."))
+  }
+  tagList(
+    if (n_hidden > 0L) {
       p(
         class = "field-help",
-        "Overlap becomes available with at least two confirmed targets that have retrieved membership."
+        sprintf(
+          "Showing %s of %s pathway rows. Remaining pathways stay in the list below.",
+          nrow(pathways),
+          nrow(pathways) + n_hidden
+        )
       )
     },
-    if (n_selected >= 2L) {
-      radioButtons(
-        ns("pathway_filter"),
-        "Matrix rows",
-        choices = c(
-          "Shared pathways" = "shared",
-          "All memberships" = "all"
-        ),
-        selected = filter_choice,
-        inline = TRUE
+    div(
+      class = "pathway-matrix-scroll",
+      tags$table(
+        class = "pathway-overlap-matrix",
+        tags$thead(tags$tr(
+          tags$th(class = "pathway-overlap-name", "Pathway"),
+          lapply(seq_len(nrow(targets)), function(j) {
+            tags$th(class = "pathway-overlap-target", targets$symbol[[j]])
+          }),
+          tags$th(class = "pathway-overlap-shared", "Targets represented")
+        )),
+        tags$tbody(lapply(seq_len(nrow(pathways)), function(i) {
+          row <- pathways[i, , drop = FALSE]
+          shared_n <- as.integer(row$selected_count %||% row$matched_target_count[[1]])
+          tags$tr(
+            tags$th(
+              class = "pathway-overlap-name",
+              scope = "row",
+              title = row$pathway_name[[1]],
+              span(class = "pathway-overlap-title", row$pathway_name[[1]]),
+              span(class = "pathway-overlap-id", row$pathway_id[[1]])
+            ),
+            lapply(seq_len(nrow(targets)), function(j) {
+              present <- pathway_member_lookup(
+                matrix,
+                row$pathway_id[[1]],
+                targets$project_target_id[[j]]
+              )
+              state <- if (isTRUE(present)) "present" else "absent"
+              tags$td(
+                class = paste("pathway-overlap-cell", paste0("is-", state)),
+                `data-pathway-member` = state,
+                span(
+                  class = "pathway-overlap-mark",
+                  title = if (isTRUE(present)) "Reactome membership present" else "Not present in the retrieved membership set",
+                  if (isTRUE(present)) "\u25CF" else "\u2014"
+                )
+              )
+            }),
+            tags$td(
+              class = "pathway-overlap-shared",
+              if (identical(shared_n, 1L)) {
+                "1 target"
+              } else {
+                sprintf("Shared by %s targets", shared_n)
+              }
+            )
+          )
+        }))
       )
-    },
-    p(
-      class = "field-help",
-      "Display sort is matched-target count, then pathway name. This is not a biological ranking. \u25CF = Reactome membership present; \u2014 = not present in the retrieved membership set."
-    ),
-    div(
-      class = "overview-section",
-      h3("Membership matrix"),
-      as_live_viz({
-        visible <- filter_pathway_visual(
-          overlap,
-          selected_ids,
-          shared_only = identical(filter_choice, "shared")
-        )
-        export_lite_pathway_html(
-          visible$membership_matrix_visible,
-          as.character(visible$pathways_visible$pathway_name)
-        )
-      })
-    ),
-    pathway_detail_ui(overlap, inspect_id),
-    div(
-      class = "overview-section",
-      h3("Pathway table"),
-      pathway_table_ui(overlap, ns, query)
-    ),
-    pathway_provenance_ui(overlap)
+    )
   )
 }
 
@@ -310,9 +429,9 @@ pathway_detail_ui <- function(overlap, inspect_id) {
     return(NULL)
   }
   div(
-    class = "overview-section",
-    h3("Pathway"),
-    p(strong(row$pathway_name[[1]])),
+    class = "evidence-secondary-block",
+    evidence_section_header("Selected pathway"),
+    p(class = "pathway-detail-name", row$pathway_name[[1]]),
     p(identifier_text(row$pathway_id[[1]])),
     p(sprintf("Targets mapped in this project: %s", row$matched_targets[[1]])),
     p(sprintf("Membership scope: %s", row$membership_scope[[1]])),
@@ -364,10 +483,21 @@ pathway_table_ui <- function(overlap, ns, query = NULL) {
               ns("inspect_pathway"),
               row$pathway_id[[1]]
             ),
-            strong(row$pathway_name[[1]]),
-            span(row$pathway_id[[1]]),
-            span(sprintf("%s · %s", row$matched_targets[[1]], row$matched_target_count[[1]])),
-            span(row$membership_scope[[1]]),
+            span(class = "pathway-row-name", row$pathway_name[[1]]),
+            span(class = "pathway-row-id", row$pathway_id[[1]]),
+            span(
+              class = "pathway-row-meta",
+              sprintf(
+                "%s · %s",
+                row$matched_targets[[1]],
+                if (identical(as.integer(row$matched_target_count[[1]]), 1L)) {
+                  "1 target"
+                } else {
+                  sprintf("Shared by %s targets", row$matched_target_count[[1]])
+                }
+              )
+            ),
+            span(class = "pathway-row-scope", row$membership_scope[[1]]),
             if (isTRUE(row$is_in_disease[[1]])) span("Reactome disease pathway") else NULL
           )
         })
@@ -386,33 +516,21 @@ pathway_provenance_ui <- function(overlap) {
     stale = "Stale",
     as.character(prov$cache_status %||% "Unknown")
   )
-  tagList(
-    div(
-      class = "overview-section",
-      h3("Source"),
-      tags$table(
-        class = "evidence-table",
-        tags$tbody(
-          tags$tr(tags$th("Source"), tags$td("Reactome")),
-          tags$tr(tags$th("Reactome release"), tags$td(prov$reactome_release %||% "not retrieved")),
-          tags$tr(tags$th("Identifier used"), tags$td("UniProt accession")),
-          tags$tr(tags$th("Membership scope"), tags$td(prov$membership_scope)),
-          tags$tr(tags$th("Retrieved"), tags$td(as.character(prov$retrieved_at))),
-          tags$tr(tags$th("Cache"), tags$td(cache_label))
-        )
-      ),
-      tags$details(
-        class = "about-scores",
-        tags$summary("Technical provenance"),
-        tags$table(
-          class = "evidence-table",
-          tags$tbody(
-            tags$tr(tags$th("Endpoint"), tags$td(prov$source_url)),
-            tags$tr(tags$th("Strategy"), tags$td("Content Service UniProt-to-lowest-level pathway mapping")),
-            tags$tr(tags$th("Cache key family"), tags$td(prov$cache_key_family)),
-            tags$tr(tags$th("Version endpoint"), tags$td(prov$version_url))
-          )
-        )
+  evidence_details_disclosure(
+    "Technical provenance",
+    tags$table(
+      class = "evidence-table",
+      tags$tbody(
+        tags$tr(tags$th("Source"), tags$td("Reactome")),
+        tags$tr(tags$th("Reactome release"), tags$td(prov$reactome_release %||% "not retrieved")),
+        tags$tr(tags$th("Identifier used"), tags$td("UniProt accession")),
+        tags$tr(tags$th("Membership scope"), tags$td(prov$membership_scope)),
+        tags$tr(tags$th("Retrieved"), tags$td(as.character(prov$retrieved_at))),
+        tags$tr(tags$th("Cache"), tags$td(cache_label)),
+        tags$tr(tags$th("Endpoint"), tags$td(prov$source_url)),
+        tags$tr(tags$th("Strategy"), tags$td("Content Service UniProt-to-lowest-level pathway mapping")),
+        tags$tr(tags$th("Cache key family"), tags$td(prov$cache_key_family)),
+        tags$tr(tags$th("Version endpoint"), tags$td(prov$version_url))
       )
     )
   )

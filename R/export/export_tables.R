@@ -367,7 +367,7 @@ export_literature_csv <- function(snapshot) {
     parts[[length(parts) + 1L]] <- data.frame(
       target = rep(export_scalar_chr(item$target$symbol, default = ""), n_rec),
       pmid = export_chr_vec(recs$pmid, n_rec),
-      title = export_chr_vec(recs$title, n_rec),
+      title = export_chr_vec(vapply(recs$title, normalize_pubmed_title, character(1)), n_rec),
       first_author = if ("first_author" %in% names(recs)) export_chr_vec(recs$first_author, n_rec) else rep(NA_character_, n_rec),
       journal = if ("journal" %in% names(recs)) export_chr_vec(recs$journal, n_rec) else rep(NA_character_, n_rec),
       publication_date = if ("publication_date" %in% names(recs)) export_chr_vec(recs$publication_date, n_rec) else rep(NA_character_, n_rec),

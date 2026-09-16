@@ -8,9 +8,8 @@ mod_project_home_ui <- function(id) {
     div(
       class = "workspace-grid",
       div(
-      class = "targets-panel",
-      `data-tour` = "target-list",
-      h3("Targets"),
+        class = "targets-panel",
+        `data-tour` = "target-list",
         uiOutput(ns("targets"))
       ),
       div(
@@ -107,6 +106,469 @@ mod_project_home_ui <- function(id) {
   )
 }
 
+live_target_display_label <- function(row) {
+  if (identical(as.character(row$resolution_status[[1]]), "confirmed") &&
+    has_display_text(row$display_symbol[[1]])) {
+    return(as.character(row$display_symbol[[1]]))
+  }
+  as.character(row$input_text[[1]])
+}
+
+manage_project_button_ui <- function(ns) {
+  actionButton(
+    ns("open_manage"),
+    "Manage project",
+    class = "btn-primary-quiet btn-manage-project"
+  )
+}
+
+project_confirmed_ids <- function(target_data) {
+  if (is.null(target_data) || nrow(target_data) == 0) {
+    return(character())
+  }
+  as.character(target_data$id[target_data$resolution_status == "confirmed"])
+}
+
+project_readiness_state <- function(current, gate_ok) {
+  if (!isTRUE(gate_ok)) {
+    return(list(label = "Unavailable", kind = "unavailable"))
+  }
+  if (is.null(current)) {
+    return(list(label = "Not retrieved", kind = "missing"))
+  }
+  status <- as.character(current$status %||% "")
+  if (isTRUE(current$stale_target_set) || identical(status, "stale")) {
+    return(list(label = "Stale", kind = "stale"))
+  }
+  if (status %in% c("blocked", "blocked_targets", "blocked_disease", "blocked_target")) {
+    return(list(label = "Unavailable", kind = "unavailable"))
+  }
+  if (status %in% c("error", "unavailable")) {
+    return(list(label = "Unavailable", kind = "unavailable"))
+  }
+  if (identical(status, "ready")) {
+    return(list(label = "Current", kind = "current"))
+  }
+  has_payload <- !is.null(current$overview) ||
+    !is.null(current$evidence) ||
+    !is.null(current$comparison) ||
+    !is.null(current$pathways) ||
+    !is.null(current$literature) ||
+    !is.null(current$structures)
+  if (isTRUE(has_payload)) {
+    return(list(label = "Current", kind = "current"))
+  }
+  list(label = "Not retrieved", kind = "missing")
+}
+
+project_store_readiness_state <- function(store, confirmed_ids, payload_fn, gate_ok = TRUE) {
+  if (!isTRUE(gate_ok) || length(confirmed_ids) == 0L) {
+    return(list(label = "Unavailable", kind = "unavailable"))
+  }
+  if (is.null(store) || length(store) == 0L) {
+    return(list(label = "Not retrieved", kind = "missing"))
+  }
+  any_payload <- FALSE
+  any_stale <- FALSE
+  for (id in confirmed_ids) {
+    item <- store[[as.character(id)]]
+    if (is.null(item)) {
+      next
+    }
+    status <- as.character(item$status %||% "")
+    if (isTRUE(item$stale_target_set) || identical(status, "stale")) {
+      any_stale <- TRUE
+    }
+    if (isTRUE(payload_fn(item))) {
+      any_payload <- TRUE
+    }
+  }
+  if (isTRUE(any_stale) && isTRUE(any_payload)) {
+    return(list(label = "Stale", kind = "stale"))
+  }
+  if (isTRUE(any_payload)) {
+    return(list(label = "Current", kind = "current"))
+  }
+  list(label = "Not retrieved", kind = "missing")
+}
+
+project_readiness_row_ui <- function(label, state, action = NULL, hint = NULL) {
+  tags$tr(
+    class = paste("project-readiness-row", paste0("is-", state$kind)),
+    tags$th(label),
+    tags$td(
+      span(
+        class = paste("project-readiness-state", paste0("is-", state$kind)),
+        state$label
+      )
+    ),
+    tags$td(
+      class = "project-readiness-action",
+      action %||% if (has_display_text(hint)) span(class = "field-help", hint) else NULL
+    )
+  )
+}
+
+project_evidence_readiness_ui <- function(ns, project_row, target_data, evidence = NULL) {
+  evidence <- evidence %||% list()
+  confirmed_ids <- project_confirmed_ids(target_data)
+  n_confirmed <- length(confirmed_ids)
+  disease_ok <- isTRUE(project_disease_is_confirmed(project_row))
+  compare_gate <- comparison_gate(project_row, target_data)
+  path_gate <- pathway_gate(target_data)
+  lit_gate <- literature_gate(project_row, target_data)
+  struct_gate <- structure_gate(target_data)
+
+  overview_state <- project_store_readiness_state(
+    evidence$overviews,
+    confirmed_ids,
+    function(item) !is.null(item$overview),
+    gate_ok = n_confirmed >= 1L
+  )
+  disease_state <- project_store_readiness_state(
+    evidence$disease_evidence,
+    confirmed_ids,
+    function(item) !is.null(item$evidence) || identical(item$status, "ready") || identical(item$status, "empty") || identical(item$status, "stale"),
+    gate_ok = isTRUE(disease_ok) && n_confirmed >= 1L
+  )
+
+  div(
+    class = "project-readiness",
+    evidence_section_header(
+      "Evidence",
+      "Retrieved live evidence for this project. Stale means the confirmed target set or disease identity changed after retrieval."
+    ),
+    tags$table(
+      class = "evidence-table project-readiness-table",
+      tags$thead(
+        tags$tr(
+          tags$th("Workspace"),
+          tags$th("State"),
+          tags$th("Continue")
+        )
+      ),
+      tags$tbody(
+        project_readiness_row_ui(
+          "Overview",
+          overview_state,
+          hint = if (identical(overview_state$kind, "unavailable")) {
+            "Confirm a target identity, then open it from the target list."
+          } else {
+            "Open a confirmed target from the target list."
+          }
+        ),
+        project_readiness_row_ui(
+          "Disease evidence",
+          disease_state,
+          hint = if (identical(disease_state$kind, "unavailable")) {
+            if (!isTRUE(disease_ok)) {
+              "Confirm the project disease identity first."
+            } else {
+              "Confirm a target identity, then open Disease evidence."
+            }
+          } else {
+            "Open Disease evidence from a confirmed target."
+          }
+        ),
+        project_readiness_row_ui(
+          "Compare evidence",
+          project_readiness_state(evidence$comparison, compare_gate$ok),
+          action = if (isTRUE(compare_gate$ok)) {
+            actionButton(ns("open_compare"), "Compare evidence", class = "btn-text")
+          } else {
+            span(class = "field-help", compare_gate$message)
+          }
+        ),
+        project_readiness_row_ui(
+          "Pathways",
+          project_readiness_state(evidence$pathways, path_gate$ok),
+          action = if (isTRUE(path_gate$ok)) {
+            actionButton(ns("open_pathways"), "Pathways", class = "btn-text")
+          } else {
+            span(class = "field-help", path_gate$message)
+          }
+        ),
+        project_readiness_row_ui(
+          "Literature",
+          project_readiness_state(evidence$literature, lit_gate$ok),
+          action = if (isTRUE(lit_gate$ok)) {
+            actionButton(ns("open_literature"), "Literature", class = "btn-text")
+          } else {
+            span(class = "field-help", lit_gate$message)
+          }
+        ),
+        project_readiness_row_ui(
+          "Structures",
+          project_readiness_state(evidence$structures, struct_gate$ok),
+          action = if (isTRUE(struct_gate$ok)) {
+            actionButton(ns("open_structures"), "Structures", class = "btn-text")
+          } else {
+            span(class = "field-help", struct_gate$message)
+          }
+        )
+      )
+    ),
+    p(
+      class = "project-secondary-actions",
+      actionButton(ns("open_research"), "Notes / Snapshots", class = "btn-text")
+    )
+  )
+}
+
+project_home_stage_ui <- function(ns, project_row, target_data, events = NULL, evidence = NULL) {
+  n_confirmed <- if (is.null(target_data) || nrow(target_data) == 0) {
+    0L
+  } else {
+    sum(target_data$resolution_status == "confirmed")
+  }
+  n_need <- if (is.null(target_data)) 0L else nrow(target_data) - n_confirmed
+  tagList(
+    div(
+      class = "project-target-set",
+      evidence_section_header(
+        "Target set",
+        "Confirmed identities can retrieve evidence. Unresolved identifiers stay in the project until they are confirmed or removed."
+      ),
+      p(
+        class = "project-target-set-summary",
+        sprintf(
+          "%s confirmed \u00b7 %s unresolved",
+          n_confirmed,
+          n_need
+        )
+      ),
+      p(
+        class = "field-help",
+        "Use the target list to open a confirmed target or resolve an unresolved identity. Add, remove, and re-add remain available."
+      )
+    ),
+    project_evidence_readiness_ui(ns, project_row, target_data, evidence),
+    evidence_details_disclosure(
+      "Project history",
+      p(
+        class = "field-help",
+        "Newest first. Identity confirmation is a scientific record; adding or removing a target is a project edit. Snapshots are never rewritten."
+      ),
+      project_timeline_ui(events)
+    )
+  )
+}
+
+project_sidebar_target_ui <- function(ns, target, selected = FALSE, retrieving = FALSE) {
+  status <- as.character(target$resolution_status)
+  row_class <- "target-select"
+  if (isTRUE(selected)) {
+    row_class <- paste(row_class, "is-selected")
+  }
+  if (isTRUE(retrieving)) {
+    row_class <- paste(row_class, "is-retrieving")
+  }
+  symbol <- if (identical(status, "confirmed") && has_display_text(target$display_symbol)) {
+    target$display_symbol
+  } else {
+    target$input_text
+  }
+  div(
+    class = "target-item",
+    tags$button(
+      type = "button",
+      class = row_class,
+      `aria-pressed` = if (isTRUE(selected)) "true" else "false",
+      onclick = sprintf(
+        "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+        ns("select_target"),
+        target$id
+      ),
+      strong(symbol),
+      if (isTRUE(retrieving)) {
+        span(class = "target-ids", "Retrieving identity\u2026")
+      } else if (identical(status, "confirmed")) {
+        span(class = "target-ids", identifier_text(target$ensembl_gene_id))
+      } else {
+        span(class = "target-ids", "Identity not confirmed")
+      },
+      span(
+        class = if (isTRUE(retrieving)) {
+          "status-pill status-pill-info"
+        } else {
+          resolution_status_class(status)
+        },
+        if (isTRUE(retrieving)) "Retrieving" else resolution_status_label(status)
+      )
+    ),
+    if (!identical(status, "confirmed") && !isTRUE(retrieving)) {
+      tagList(
+        p(class = "target-unresolved-note", "Confirm this identifier before retrieving evidence."),
+        resolve_identity_button_ui(ns, target$id)
+      )
+    }
+  )
+}
+
+add_target_sidebar_ui <- function(ns, n_active, max_targets, form_open = FALSE) {
+  at_cap <- as.integer(n_active) >= as.integer(max_targets)
+  tagList(
+    div(
+      class = "targets-heading-row",
+      h3("Targets"),
+      span(class = "targets-count", sprintf("%s / %s", n_active, max_targets))
+    ),
+    if (isTRUE(at_cap)) {
+      tagList(
+        tags$button(
+          type = "button",
+          class = "btn-add-target",
+          disabled = NA,
+          "+ Add target"
+        ),
+        p(class = "field-help", "Maximum 8 active targets")
+      )
+    } else {
+      tagList(
+        actionButton(ns("toggle_add_target"), "+ Add target", class = "btn-add-target"),
+        if (isTRUE(form_open)) {
+          div(
+            class = "add-target-form",
+            textInput(ns("add_target_text"), NULL, placeholder = "Symbol or identifier"),
+            actionButton(ns("add_target"), "Add", class = "btn-primary-quiet")
+          )
+        }
+      )
+    }
+  )
+}
+
+resolve_identity_button_ui <- function(ns, target_id) {
+  tags$button(
+    type = "button",
+    class = "btn-resolve-identity",
+    onclick = sprintf(
+      "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+      ns("select_target"),
+      target_id
+    ),
+    "Resolve identity"
+  )
+}
+
+manage_project_body_ui <- function(ns, project_row, target_data) {
+  p <- project_row
+  disease_confirmed <- isTRUE(project_disease_is_confirmed(p))
+  div(
+    class = "manage-project",
+    div(
+      class = "manage-section",
+      h4("Project details"),
+      p(class = "field-help", "Title and research question are presentation only. They do not invalidate evidence."),
+      textInput(ns("edit_title"), "Project title", value = p$title[[1]]),
+      textAreaInput(
+        ns("edit_question"),
+        "Research question",
+        value = p$research_question[[1]],
+        rows = 3
+      ),
+      actionButton(ns("save_presentation"), "Save changes", class = "btn-primary-quiet")
+    ),
+    div(
+      class = "manage-section",
+      h4("Disease context"),
+      if (isTRUE(disease_confirmed)) {
+        tagList(
+          p(p$disease_name[[1]]),
+          p(class = "identifier", identifier_text(p$disease_ontology_id[[1]]))
+        )
+      } else {
+        p(p$disease_label[[1]])
+      },
+      textInput(ns("edit_disease"), "Disease context", value = p$disease_label[[1]]),
+      p(
+        class = "field-help",
+        "This clears live Open Targets, Compare, and Literature for the project. Overview, pathways, and structures stay. Snapshots stay."
+      ),
+      actionButton(ns("save_disease"), "Change disease context", class = "btn-primary-quiet")
+    ),
+    div(
+      class = "manage-section",
+      h4("Target management"),
+      if (is.null(target_data) || nrow(target_data) == 0) {
+        p(class = "field-help", "No active targets.")
+      } else {
+        tags$ul(
+          class = "manage-target-list",
+          lapply(seq_len(nrow(target_data)), function(i) {
+            row <- target_data[i, ]
+            label <- live_target_display_label(row)
+            status <- as.character(row$resolution_status[[1]])
+            tags$li(
+              class = "manage-target-row",
+              div(
+                class = "manage-target-meta",
+                span(class = "manage-target-name", label),
+                span(class = resolution_status_class(status), resolution_status_label(status))
+              ),
+              div(
+                class = "target-action-menu",
+                span(class = "target-action-menu-label", "Actions"),
+                if (identical(status, "confirmed")) {
+                  tags$button(
+                    type = "button",
+                    class = "btn-text",
+                    `data-tw-input` = ns("request_reset_identity"),
+                    `data-tw-value` = as.character(row$id[[1]]),
+                    "Reset identity"
+                  )
+                },
+                tags$button(
+                  type = "button",
+                  class = "btn-text",
+                  `data-tw-input` = ns("request_remove_target"),
+                  `data-tw-value` = as.character(row$id[[1]]),
+                  "Remove from project"
+                )
+              )
+            )
+          })
+        )
+      }
+    )
+  )
+}
+
+remove_target_confirm_ui <- function(ns, label) {
+  shiny::modalDialog(
+    title = sprintf("Remove %s from the live project?", label),
+    easyClose = FALSE,
+    p(sprintf("%s will be removed from the current workspace.", label)),
+    p("Existing snapshots, notes, and project history will not be rewritten."),
+    footer = tagList(
+      actionButton(ns("cancel_remove"), "Cancel", class = "btn-ghost"),
+      actionButton(
+        ns("confirm_remove_go"),
+        sprintf("Remove %s", label),
+        class = "btn-danger-quiet"
+      )
+    )
+  )
+}
+
+reset_identity_confirm_ui <- function(ns, label) {
+  shiny::modalDialog(
+    title = sprintf("Reset %s identity?", label),
+    easyClose = FALSE,
+    tags$ul(
+      class = "project-status-list",
+      tags$li(sprintf("%s stays in the project.", label)),
+      tags$li("Its confirmed scientific identity is cleared."),
+      tags$li("Affected live evidence may become stale."),
+      tags$li("Snapshots remain unchanged.")
+    ),
+    footer = tagList(
+      actionButton(ns("cancel_reset"), "Cancel", class = "btn-ghost"),
+      actionButton(ns("confirm_reset_go"), "Reset identity", class = "btn-primary-quiet")
+    )
+  )
+}
+
 mod_project_home_server <- function(id, db_pool, user, project_id) {
   moduleServer(id, function(input, output, session) {
     back_requested <- reactiveVal(0L)
@@ -117,6 +579,10 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
     disease_revision <- reactiveVal(0L)
     selected_target_id <- reactiveVal(NULL)
     workspace_panel <- reactiveVal("project")
+    add_form_open <- reactiveVal(FALSE)
+    pending_remove_id <- reactiveVal(NULL)
+    pending_reset_id <- reactiveVal(NULL)
+    return_to_manage <- reactiveVal(FALSE)
 
     project <- reactive({
       refresh_token()
@@ -141,6 +607,24 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         user()$id
       )
     })
+
+    show_manage_modal <- function() {
+      p <- isolate(project())
+      target_data <- isolate(targets())
+      if (is.null(p)) {
+        return()
+      }
+      replace_shiny_modal(
+        session,
+        shiny::modalDialog(
+          title = "Manage project",
+          easyClose = TRUE,
+          size = "l",
+          footer = shiny::modalButton("Close"),
+          manage_project_body_ui(session$ns, p, target_data)
+        )
+      )
+    }
 
     selected_target <- reactive({
       identity_revision()
@@ -363,6 +847,7 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         ),
         div(
           class = "workspace-nav-actions",
+          manage_project_button_ui(ns),
           actionButton(ns("nav_back"), paste("\u2190", back_label), class = "btn-nav-back"),
           tags$details(
             class = "project-actions",
@@ -389,19 +874,34 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         class = "project-hero",
         `data-tour` = "project-header",
         h1(p$title[[1]]),
-        p(class = "research-question", p$research_question[[1]]),
+        if (has_display_text(p$research_question[[1]])) {
+          p(class = "research-question", p$research_question[[1]])
+        },
         div(
-          class = "context-row",
-          span(p$organism[[1]]),
-          span(
-            if (project_disease_is_confirmed(p)) {
-              tagList(
-                paste(p$disease_name[[1]], "\u00b7"),
-                identifier_text(p$disease_ontology_id[[1]])
-              )
-            } else {
-              p$disease_label[[1]]
-            }
+          class = "project-context",
+          div(
+            class = "project-context-item",
+            span(class = "project-context-label", "Disease"),
+            span(
+              class = "project-context-value",
+              if (project_disease_is_confirmed(p)) {
+                tagList(
+                  p$disease_name[[1]],
+                  " \u00b7 ",
+                  identifier_text(p$disease_ontology_id[[1]])
+                )
+              } else {
+                tagList(
+                  p$disease_label[[1]],
+                  span(class = "status-pill status-pill-warning", "Needs confirmation")
+                )
+              }
+            )
+          ),
+          div(
+            class = "project-context-item",
+            span(class = "project-context-label", "Species"),
+            span(class = "project-context-value", p$organism[[1]])
           )
         )
       )
@@ -478,155 +978,14 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
 
     output$project_stage <- renderUI({
       ns <- session$ns
-      p <- project()
-      target_data <- targets()
-      n_confirmed <- if (is.null(target_data) || nrow(target_data) == 0) {
-        0L
-      } else {
-        sum(target_data$resolution_status == "confirmed")
-      }
-      n_need <- if (is.null(target_data)) 0L else nrow(target_data) - n_confirmed
-      gate <- comparison_gate(p, target_data)
-      path_gate <- pathway_gate(target_data)
-      lit_gate <- literature_gate(p, target_data)
-      struct_gate <- structure_gate(target_data)
-
       tagList(
         mod_disease_resolver_ui(ns("disease_resolver")),
-        div(
-          class = "overview-section",
-          h3("Project status"),
-          tags$ul(
-            class = "project-status-list",
-            tags$li(
-              if (isTRUE(project_disease_is_confirmed(p))) {
-                "Disease identity confirmed"
-              } else {
-                "Disease identity needs confirmation"
-              }
-            ),
-            tags$li(sprintf("%s confirmed target%s", n_confirmed, if (identical(n_confirmed, 1L)) "" else "s")),
-            tags$li(sprintf("%s target%s requiring resolution", n_need, if (identical(n_need, 1L)) "" else "s"))
-          ),
-          p(
-            class = "panel-intro",
-            "Select a target to investigate."
-          ),
-          tags$details(
-            class = "project-edit",
-            tags$summary("Edit project"),
-            p(
-              class = "field-help",
-              "Title and research question are presentation only. Changing disease wording resets the live disease identity. Adding a target starts unresolved. Removing a confirmed identity does not rewrite snapshots."
-            ),
-            textInput(ns("edit_title"), "Project title", value = p$title[[1]]),
-            textAreaInput(
-              ns("edit_question"),
-              "Research question",
-              value = p$research_question[[1]],
-              rows = 3
-            ),
-            actionButton(ns("save_presentation"), "Save title and question", class = "btn-primary-quiet"),
-            textInput(ns("edit_disease"), "Disease context", value = p$disease_label[[1]]),
-            p(
-              class = "field-help",
-              "This clears live Open Targets, Compare, and Literature for the project. Overview, pathways, and structures stay. Snapshots stay."
-            ),
-            actionButton(ns("save_disease"), "Change disease context", class = "btn-primary-quiet"),
-            textInput(ns("add_target_text"), "Add candidate target"),
-            actionButton(ns("add_target"), "Add target", class = "btn-primary-quiet"),
-            if (!is.null(target_data) && nrow(target_data) > 0) {
-              tagList(
-                h4("Live targets"),
-                tags$ul(
-                  class = "project-status-list",
-                  lapply(seq_len(nrow(target_data)), function(i) {
-                    row <- target_data[i, ]
-                    label <- if (identical(as.character(row$resolution_status), "confirmed") &&
-                      has_display_text(row$display_symbol)) {
-                      row$display_symbol
-                    } else {
-                      row$input_text
-                    }
-                    tags$li(
-                      span(label),
-                      if (identical(as.character(row$resolution_status), "confirmed")) {
-                        tags$button(
-                          type = "button",
-                          class = "btn-text",
-                          onclick = sprintf(
-                            "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                            ns("reset_identity"),
-                            row$id
-                          ),
-                          "Reset identity"
-                        )
-                      },
-                      tags$button(
-                        type = "button",
-                        class = "btn-text",
-                        onclick = sprintf(
-                          "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-                          ns("remove_target"),
-                          row$id
-                        ),
-                        "Remove"
-                      )
-                    )
-                  })
-                ),
-                checkboxInput(
-                  ns("confirm_delete_target_notes"),
-                  "I understand that removing a target deletes its live target notes (snapshots stay).",
-                  value = FALSE
-                )
-              )
-            }
-          ),
-          div(
-            class = "next-actions",
-            if (isTRUE(gate$ok)) {
-              actionButton(
-                ns("open_compare"),
-                "Compare evidence",
-                class = "btn-primary-quiet"
-              )
-            } else {
-              span(class = "field-help", gate$message)
-            },
-            if (isTRUE(path_gate$ok)) {
-              actionButton(
-                ns("open_pathways"),
-                "Pathways",
-                class = "btn-primary-quiet"
-              )
-            } else {
-              span(class = "field-help", path_gate$message)
-            },
-            if (isTRUE(lit_gate$ok)) {
-              actionButton(
-                ns("open_literature"),
-                "Literature",
-                class = "btn-primary-quiet"
-              )
-            } else {
-              span(class = "field-help", lit_gate$message)
-            },
-            if (isTRUE(struct_gate$ok)) {
-              actionButton(
-                ns("open_structures"),
-                "Structures",
-                class = "btn-primary-quiet"
-              )
-            } else {
-              span(class = "field-help", struct_gate$message)
-            },
-            actionButton(
-              ns("open_research"),
-              "Notes / Snapshots",
-              class = "btn-primary-quiet"
-            )
-          )
+        project_home_stage_ui(
+          ns,
+          project(),
+          targets(),
+          events = list_project_events(db_pool, project_id(), user()$id),
+          evidence = workspace_evidence()
         )
       )
     })
@@ -635,59 +994,30 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
       ns <- session$ns
       target_data <- targets()
       retrieving <- retrieving_ids()
+      max_targets <- get_app_config()$max_targets
+      n_active <- if (is.null(target_data)) 0L else nrow(target_data)
 
-      if (nrow(target_data) == 0) {
-        return(p("No candidate targets."))
-      }
-
-      div(
-        class = "target-list",
-        `data-tour` = "identity",
-        lapply(seq_len(nrow(target_data)), function(i) {
-          target <- target_data[i, ]
-          status <- as.character(target$resolution_status)
-          selected <- identical(as.character(target$id), as.character(selected_target_id())) &&
-            !workspace_panel() %in% c("project", "compare", "pathways", "literature", "structures", "research")
-          row_class <- "target-select"
-          if (isTRUE(selected)) {
-            row_class <- paste(row_class, "is-selected")
-          }
-          is_retrieving <- as.character(target$id) %in% retrieving
-          if (isTRUE(is_retrieving)) {
-            row_class <- paste(row_class, "is-retrieving")
-          }
-
-          tags$button(
-            type = "button",
-            class = row_class,
-            `aria-pressed` = if (isTRUE(selected)) "true" else "false",
-            onclick = sprintf(
-              "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
-              ns("select_target"),
-              target$id
-            ),
-            strong(if (identical(status, "confirmed") && has_display_text(target$display_symbol)) {
-              target$display_symbol
-            } else {
-              target$input_text
-            }),
-            if (is_retrieving) {
-              span(class = "target-ids", "Retrieving identity\u2026")
-            } else if (identical(status, "confirmed")) {
-              span(class = "target-ids", identifier_text(target$ensembl_gene_id))
-            } else {
-              span(class = "target-ids", "Identity not confirmed")
-            },
-            span(
-              class = if (is_retrieving) {
-                "status-pill status-pill-info"
-              } else {
-                resolution_status_class(status)
-              },
-              if (is_retrieving) "Retrieving" else resolution_status_label(status)
-            )
+      tagList(
+        add_target_sidebar_ui(ns, n_active, max_targets, form_open = add_form_open()),
+        if (n_active == 0) {
+          p("No candidate targets.")
+        } else {
+          div(
+            class = "target-list",
+            `data-tour` = "identity",
+            lapply(seq_len(nrow(target_data)), function(i) {
+              target <- target_data[i, ]
+              selected <- identical(as.character(target$id), as.character(selected_target_id())) &&
+                !workspace_panel() %in% c("project", "compare", "pathways", "literature", "structures", "research")
+              project_sidebar_target_ui(
+                ns,
+                target,
+                selected = selected,
+                retrieving = as.character(target$id) %in% retrieving
+              )
+            })
           )
-        })
+        }
       )
     })
 
@@ -857,6 +1187,7 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
       }
       refresh_token(refresh_token() + 1L)
       message(list(type = "info", text = "Title and research question updated. Evidence was not invalidated."))
+      show_manage_modal()
     }, ignoreInit = TRUE)
 
     observeEvent(input$save_disease, {
@@ -878,6 +1209,11 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         type = "info",
         text = "Disease context updated. Live Open Targets, Compare, and Literature were cleared. Snapshots were not changed."
       ))
+      show_manage_modal()
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$toggle_add_target, {
+      add_form_open(!isTRUE(add_form_open()))
     }, ignoreInit = TRUE)
 
     observeEvent(input$add_target, {
@@ -893,23 +1229,59 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         return()
       }
       updateTextInput(session, "add_target_text", value = "")
+      add_form_open(FALSE)
       refresh_token(refresh_token() + 1L)
       identity_revision(identity_revision() + 1L)
       message(list(type = "info", text = "Target added as unresolved. It is not auto-confirmed."))
     }, ignoreInit = TRUE)
 
-    observeEvent(input$remove_target, {
-      req(user(), project_id(), input$remove_target)
-      tid <- input$remove_target
+    observeEvent(input$open_manage, {
+      return_to_manage(TRUE)
+      show_manage_modal()
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$request_remove_target, {
+      req(user(), input$request_remove_target)
+      tid <- input$request_remove_target
+      row <- get_owned_target(db_pool, tid, user()$id)
+      if (is.null(row)) {
+        message(list(type = "error", text = "Target was not found in this project."))
+        return()
+      }
+      pending_remove_id(as.character(tid))
+      replace_shiny_modal(
+        session,
+        remove_target_confirm_ui(session$ns, live_target_display_label(row))
+      )
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$cancel_remove, {
+      pending_remove_id(NULL)
+      if (isTRUE(return_to_manage())) {
+        show_manage_modal()
+      } else {
+        shiny::removeModal()
+      }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$confirm_remove_go, {
+      req(user(), project_id(), pending_remove_id())
+      tid <- pending_remove_id()
       result <- remove_project_target(
         db_pool,
         project_id(),
         user()$id,
         tid,
-        confirm_note_deletion = isTRUE(input$confirm_delete_target_notes)
+        confirm_removal = TRUE
       )
+      pending_remove_id(NULL)
       if (!isTRUE(result$ok)) {
         message(list(type = "error", text = result$message))
+        if (isTRUE(return_to_manage())) {
+          show_manage_modal()
+        } else {
+          shiny::removeModal()
+        }
         return()
       }
       if (identical(as.character(selected_target_id()), as.character(tid))) {
@@ -919,13 +1291,49 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
       refresh_token(refresh_token() + 1L)
       identity_revision(identity_revision() + 1L)
       message(list(type = "info", text = "Target removed from the live project. Snapshots were not changed."))
+      if (isTRUE(return_to_manage())) {
+        show_manage_modal()
+      } else {
+        shiny::removeModal()
+      }
     }, ignoreInit = TRUE)
 
-    observeEvent(input$reset_identity, {
-      req(user(), input$reset_identity)
-      result <- reset_confirmed_target(db_pool, input$reset_identity, user()$id)
+    observeEvent(input$request_reset_identity, {
+      req(user(), input$request_reset_identity)
+      tid <- input$request_reset_identity
+      row <- get_owned_target(db_pool, tid, user()$id)
+      if (is.null(row)) {
+        message(list(type = "error", text = "Target was not found in this project."))
+        return()
+      }
+      pending_reset_id(as.character(tid))
+      replace_shiny_modal(
+        session,
+        reset_identity_confirm_ui(session$ns, live_target_display_label(row))
+      )
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$cancel_reset, {
+      pending_reset_id(NULL)
+      if (isTRUE(return_to_manage())) {
+        show_manage_modal()
+      } else {
+        shiny::removeModal()
+      }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$confirm_reset_go, {
+      req(user(), pending_reset_id())
+      tid <- pending_reset_id()
+      result <- reset_confirmed_target(db_pool, tid, user()$id)
+      pending_reset_id(NULL)
       if (!isTRUE(result$ok)) {
         message(list(type = "error", text = result$message))
+        if (isTRUE(return_to_manage())) {
+          show_manage_modal()
+        } else {
+          shiny::removeModal()
+        }
         return()
       }
       refresh_token(refresh_token() + 1L)
@@ -934,6 +1342,11 @@ mod_project_home_server <- function(id, db_pool, user, project_id) {
         type = "info",
         text = "Confirmed identity reset. Live evidence for that target was invalidated. Snapshots were not changed."
       ))
+      if (isTRUE(return_to_manage())) {
+        show_manage_modal()
+      } else {
+        shiny::removeModal()
+      }
     }, ignoreInit = TRUE)
 
     observeEvent(input$archive, {

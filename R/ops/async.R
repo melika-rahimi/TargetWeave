@@ -98,6 +98,17 @@ tw_then_at <- function(state, i, fn) {
   tw_then(state, function(state) fn(state, i))
 }
 
+tw_list_all <- function(items) {
+  items <- as.list(items)
+  if (length(items) == 0L) {
+    return(list())
+  }
+  if (!any(vapply(items, is_tw_promise, logical(1)))) {
+    return(unname(items))
+  }
+  promises::promise_all(.list = unname(items))
+}
+
 new_submit_guard <- function(min_interval_sec = 1) {
   last <- -Inf
   busy <- FALSE

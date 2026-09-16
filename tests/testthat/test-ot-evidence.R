@@ -575,6 +575,9 @@ test_that("disease evidence UI uses researcher-facing copy", {
   expect_match(html, "Osimertinib")
   expect_false(grepl(">OSIMERTINIB<", html))
   expect_match(html, "not probabilities of causality")
+  expect_match(html, "How to interpret these results")
+  expect_match(html, "interpretation-guidance")
+  expect_false(grepl("interpretation-guidance[^>]*open", html))
   expect_match(html, "Technical provenance")
   expect_match(html, "enableIndirect = false")
 

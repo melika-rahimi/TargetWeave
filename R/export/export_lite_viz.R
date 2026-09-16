@@ -230,29 +230,223 @@ export_lite_pathway_html <- function(membership_matrix, pathway_order, symbol_or
   )
 }
 
-export_lite_trend_html <- function(trend, symbol) {
-  if (is.null(trend) || nrow(trend) == 0) {
+export_lite_trend_html <- function(trend, symbol, year_input_id = NULL, selected_year = NULL) {
+  display <- literature_display_trend(trend)
+  if (is.null(display) || nrow(display) == 0) {
     return("")
   }
-  data <- trend[trend$status == "ok", , drop = FALSE]
-  if (nrow(data) == 0) {
+  years <- as.integer(display$year)
+  if (anyDuplicated(years) > 0) {
     return("")
   }
-  labels <- ifelse(isTRUE(data$is_partial_year), paste0(data$year, "*"), as.character(data$year))
-  ymax <- max(as.integer(data$record_count), na.rm = TRUE)
-  if (!is.finite(ymax) || ymax <= 0) {
-    ymax <- 1L
+  ok <- literature_ok_trend_rows(display)
+  n_ok <- nrow(ok)
+  if (n_ok == 0L) {
+    return("")
   }
-  inner <- export_lite_bar_rows(
-    labels,
-    as.integer(data$record_count),
-    formatted = as.character(as.integer(data$record_count)),
-    max_value = ymax
+  if (n_ok == 1L) {
+    year <- as.integer(ok$year[[1]])
+    count <- as.integer(ok$record_count[[1]])
+    partial <- isTRUE(ok$is_partial_year[[1]])
+    inner <- sprintf(
+      "<p class=\"literature-single-year\">%s matched PubMed records in calendar year %s%s. Historical annual counts were not retrieved. This is an annual count, not a cumulative total.</p>",
+      html_esc(format(as.integer(count), big.mark = ",", scientific = FALSE, trim = TRUE)),
+      html_esc(as.character(year)),
+      if (isTRUE(partial)) " (partial year)" else ""
+    )
+    return(export_lite_figure(
+      inner,
+      alt = sprintf("Annual PubMed record count for %s in %s", symbol, year),
+      caption = "Annual PubMed record count, not cumulative. Source: NCBI PubMed"
+    ))
+  }
+  inner_svg <- export_lite_annual_trend_svg(
+    display,
+    year_input_id = year_input_id,
+    selected_year = selected_year
   )
-  export_lite_figure(
-    inner,
-    alt = sprintf("Ten-year publication trend for %s", symbol),
-    caption = "Publication counts within this search definition. Source: NCBI PubMed"
+  figure <- export_lite_figure(
+    inner_svg,
+    alt = sprintf("Annual matched PubMed records by calendar year for %s", symbol),
+    caption = "Annual PubMed record count, not cumulative. Missing years are omitted, not shown as zero. Orange marks the current calendar year as partial, not higher importance. Source: NCBI PubMed"
+  )
+  table_html <- export_lite_annual_trend_table(display, year_input_id = year_input_id, selected_year = selected_year)
+  paste0(
+    figure,
+    sprintf(
+      "<details class=\"literature-annual-counts\"><summary>View annual counts</summary>%s</details>",
+      table_html
+    )
+  )
+}
+
+literature_ok_trend_rows <- function(trend) {
+  if (is.null(trend) || nrow(trend) == 0) {
+    return(trend)
+  }
+  trend[
+    trend$status == "ok" & !is.na(trend$record_count),
+    ,
+    drop = FALSE
+  ]
+}
+
+literature_display_trend <- function(trend) {
+  if (is.null(trend) || nrow(trend) == 0) {
+    return(trend)
+  }
+  trend[order(as.integer(trend$year), trend$year), , drop = FALSE]
+}
+
+export_lite_annual_trend_svg <- function(trend, year_input_id = NULL, selected_year = NULL) {
+  ok_trend <- literature_ok_trend_rows(trend)
+  if (is.null(ok_trend) || nrow(ok_trend) == 0) {
+    return("")
+  }
+  if (anyDuplicated(as.integer(ok_trend$year)) > 0) {
+    return("")
+  }
+  years <- as.integer(ok_trend$year)
+  counts <- suppressWarnings(as.numeric(ok_trend$record_count))
+  xmin <- min(years, na.rm = TRUE)
+  xmax <- max(years, na.rm = TRUE)
+  span <- max(1L, xmax - xmin)
+  ymax <- max(counts, na.rm = TRUE)
+  if (!is.finite(ymax) || ymax <= 0) {
+    ymax <- 1
+  }
+  pad_l <- 48
+  pad_r <- 12
+  pad_t <- 14
+  pad_b <- 36
+  w <- 640
+  h <- 220
+  inner_w <- w - pad_l - pad_r
+  inner_h <- h - pad_t - pad_b
+  x_at <- function(year) pad_l + inner_w * as.numeric(year - xmin) / span
+  y_at <- function(v) pad_t + inner_h * (1 - as.numeric(v) / ymax)
+  bar_w <- min(36, max(10, inner_w / max(length(years), 1L) * 0.55))
+  ticks <- pretty(c(0, ymax), n = 3)
+  ticks <- ticks[ticks >= 0 & ticks <= ymax * 1.05]
+  grid <- paste(vapply(ticks, function(tick) {
+    y <- y_at(min(tick, ymax))
+    sprintf(
+      "<line x1=\"%s\" y1=\"%.1f\" x2=\"%s\" y2=\"%.1f\" class=\"tw-trend-grid\" />",
+      pad_l,
+      y,
+      w - pad_r,
+      y
+    )
+  }, character(1)), collapse = "")
+  ylab <- paste(vapply(ticks, function(tick) {
+    sprintf(
+      "<text x=\"%s\" y=\"%.1f\" class=\"tw-trend-ylab\">%s</text>",
+      pad_l - 8,
+      y_at(min(tick, ymax)) + 4,
+      html_esc(format(tick, big.mark = ",", scientific = FALSE, trim = TRUE))
+    )
+  }, character(1)), collapse = "")
+  interactive <- has_display_text(year_input_id)
+  selected_year_value <- as.character(selected_year %||% "")
+  bars <- paste(vapply(seq_len(nrow(ok_trend)), function(i) {
+    year <- as.integer(years[[i]])
+    count <- counts[[i]]
+    count_label <- format(as.integer(count), big.mark = ",", scientific = FALSE, trim = TRUE)
+    hover <- sprintf("%s \u00b7 %s matched records", year, count_label)
+    selected <- identical(as.character(year), selected_year_value)
+    cls <- "tw-trend-bar"
+    if (isTRUE(ok_trend$is_partial_year[[i]])) {
+      cls <- paste(cls, "is-partial")
+    }
+    if (isTRUE(selected)) {
+      cls <- paste(cls, "is-selected")
+    }
+    x <- x_at(year) - bar_w / 2
+    y <- y_at(count)
+    height <- max(0, pad_t + inner_h - y)
+    rect <- sprintf(
+      "<rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" class=\"%s\"></rect><title>%s</title>",
+      x,
+      y,
+      bar_w,
+      height,
+      cls,
+      html_esc(hover)
+    )
+    if (!isTRUE(interactive)) {
+      return(rect)
+    }
+    sprintf(
+      "<g class=\"tw-trend-hit%s\" role=\"button\" tabindex=\"0\" data-literature-year=\"%s\" data-tw-input=\"%s\" data-tw-value=\"%s\" aria-label=\"%s\">%s</g>",
+      if (isTRUE(selected)) " is-selected" else "",
+      year,
+      html_esc(as.character(year_input_id)),
+      year,
+      html_esc(hover),
+      rect
+    )
+  }, character(1)), collapse = "")
+  xlabels <- paste(vapply(seq_len(nrow(ok_trend)), function(i) {
+    label <- if (isTRUE(ok_trend$is_partial_year[[i]])) paste0(years[[i]], "*") else as.character(years[[i]])
+    sprintf(
+      "<text x=\"%.1f\" y=\"%s\" class=\"tw-trend-xlab\">%s</text>",
+      x_at(years[[i]]),
+      h - 10,
+      html_esc(label)
+    )
+  }, character(1)), collapse = "")
+  sprintf(
+    "<svg class=\"tw-trend-svg\" viewBox=\"0 0 %s %s\" role=\"img\" %s>%s%s%s%s</svg>",
+    w,
+    h,
+    if (isTRUE(interactive)) "focusable=\"true\"" else "aria-hidden=\"true\" focusable=\"false\"",
+    grid,
+    ylab,
+    bars,
+    xlabels
+  )
+}
+
+export_lite_annual_trend_table <- function(trend, year_input_id = NULL, selected_year = NULL) {
+  if (!is.null(trend) && nrow(trend) > 0 && anyDuplicated(as.integer(trend$year)) > 0) {
+    return("")
+  }
+  interactive <- has_display_text(year_input_id)
+  selected_year_value <- as.character(selected_year %||% "")
+  rows <- paste(vapply(seq_len(nrow(trend)), function(i) {
+    year <- as.integer(trend$year[[i]])
+    ok <- identical(as.character(trend$status[[i]]), "ok") && !is.na(trend$record_count[[i]])
+    count <- if (isTRUE(ok)) {
+      format(as.integer(trend$record_count[[i]]), big.mark = ",", scientific = FALSE, trim = TRUE)
+    } else {
+      "Not retrieved"
+    }
+    note <- if (isTRUE(trend$is_partial_year[[i]])) "partial year" else "full calendar year"
+    selected <- identical(as.character(year), selected_year_value)
+    attrs <- if (isTRUE(interactive) && isTRUE(ok)) {
+      sprintf(
+        " class=\"tw-trend-year-row%s\" data-literature-year=\"%s\" data-tw-input=\"%s\" data-tw-value=\"%s\" tabindex=\"0\" role=\"button\"",
+        if (isTRUE(selected)) " is-selected" else "",
+        year,
+        html_esc(as.character(year_input_id)),
+        year
+      )
+    } else if (isTRUE(selected)) {
+      " class=\"is-selected\""
+    } else {
+      ""
+    }
+    sprintf(
+      "<tr%s><th scope=\"row\">%s</th><td>%s</td><td>%s</td></tr>",
+      attrs,
+      html_esc(as.character(year)),
+      html_esc(count),
+      html_esc(note)
+    )
+  }, character(1)), collapse = "")
+  sprintf(
+    "<table class=\"tw-trend-table\"><caption>Annual matched PubMed records</caption><thead><tr><th>Calendar year</th><th>Annual record count</th><th>Coverage</th></tr></thead><tbody>%s</tbody></table>",
+    rows
   )
 }
 

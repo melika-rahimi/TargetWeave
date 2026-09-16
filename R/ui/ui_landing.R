@@ -372,6 +372,16 @@ auth_back_row <- function(ns) {
   )
 }
 
+auth_credential_form <- function(ns, submit_id, submit_label, ..., message_ui = NULL) {
+  div(
+    class = "auth-submit-form",
+    `data-tw-submit` = ns(submit_id),
+    ...,
+    actionButton(ns(submit_id), submit_label, class = "btn-primary-block"),
+    message_ui
+  )
+}
+
 auth_sign_in_ui <- function(ns = shiny::NS("auth")) {
   div(
     class = "auth-screen",
@@ -383,18 +393,18 @@ auth_sign_in_ui <- function(ns = shiny::NS("auth")) {
         class = "auth-panel",
         h1("Sign in"),
         p(class = "panel-intro", "Accounts are private. Projects are never shared."),
-        textInput(ns("login_email"), "Email"),
-        password_field_ui(
-          ns("login_password"),
-          "Password",
-          autocomplete = "current-password"
-        ),
-        actionButton(
-          ns("login_submit"),
+        auth_credential_form(
+          ns,
+          "login_submit",
           "Sign in",
-          class = "btn-primary-block"
-        ),
-        uiOutput(ns("login_message"))
+          textInput(ns("login_email"), "Email"),
+          password_field_ui(
+            ns("login_password"),
+            "Password",
+            autocomplete = "current-password"
+          ),
+          message_ui = uiOutput(ns("login_message"))
+        )
       )
     )
   )
@@ -411,25 +421,25 @@ auth_register_ui <- function(ns = shiny::NS("auth")) {
         class = "auth-panel",
         h1("Create account", id = "create-account"),
         p(class = "panel-intro", "Start an investigation with a private workspace."),
-        textInput(ns("register_email"), "Email"),
-        password_field_ui(
-          ns("register_password"),
-          "Password",
-          placeholder = "At least 8 characters",
-          autocomplete = "new-password"
-        ),
-        password_field_ui(
-          ns("register_password_confirm"),
-          "Confirm password",
-          placeholder = "Re-enter password",
-          autocomplete = "new-password"
-        ),
-        actionButton(
-          ns("register_submit"),
+        auth_credential_form(
+          ns,
+          "register_submit",
           "Create account",
-          class = "btn-primary-block"
-        ),
-        uiOutput(ns("register_message"))
+          textInput(ns("register_email"), "Email"),
+          password_field_ui(
+            ns("register_password"),
+            "Password",
+            placeholder = "At least 8 characters",
+            autocomplete = "new-password"
+          ),
+          password_field_ui(
+            ns("register_password_confirm"),
+            "Confirm password",
+            placeholder = "Re-enter password",
+            autocomplete = "new-password"
+          ),
+          message_ui = uiOutput(ns("register_message"))
+        )
       )
     )
   )

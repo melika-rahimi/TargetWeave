@@ -207,8 +207,12 @@ test_that("Structures UI states avoid NA/NULL and load one Mol* viewer after sel
   html <- as.character(structures_result_ui(ns, result, selected, NULL, selected$target$project_target_id))
   expect_match(html, "Experimental PDB structures may represent only part of the canonical protein")
   expect_equal(length(gregexpr("Experimental PDB structures may represent only part", html, fixed = TRUE)[[1]]), 1)
+  expect_match(html, "Experimentally determined PDB structures associated with confirmed targets")
   expect_match(html, "Sorted by sequence coverage")
   expect_match(html, "SOLUTION NMR|Not provided")
+  expect_match(html, "experimental-structures-surface")
+  expect_match(html, "evidence-target-switcher")
+  expect_match(html, 'role="radiogroup"')
   expect_false(grepl(">NA<", html))
   expect_false(grepl(">NULL<", html))
   expect_false(grepl("3d-view", html))
@@ -228,8 +232,153 @@ test_that("Structures navigation exists and the module does not call httr2", {
   expect_match(home, "Structures")
   expect_match(home, "mod_structures_ui")
   expect_false(grepl("httr2", mod))
+  expect_false(grepl("radioButtons", mod))
   expect_equal(workspace_panel_label("structures"), "Structures")
   expect_equal(workspace_back_destination("structures"), "project")
+})
+
+structures_ui_html <- function(current, selected, record = NULL, selected_id = NULL, query = "", visible_n = STRUCTURE_PAGE_SIZE) {
+  source_app("R/modules/mod_structures.R")
+  ns <- shiny::NS("structures")
+  if (is.null(selected_id) && !is.null(selected)) {
+    selected_id <- selected$target$project_target_id
+  }
+  paste(
+    as.character(structures_result_ui(
+      ns,
+      current,
+      selected,
+      record,
+      selected_id,
+      query = query,
+      visible_n = visible_n
+    )),
+    collapse = "\n"
+  )
+}
+
+test_that("Structures evidence UI preserves experimental records, zero, failure, stale, and switcher a11y", {
+  skip_if_not_installed("httr2")
+  skip_if_not_installed("shiny")
+
+  multi <- retrieve_project_structures(
+    list(id = "p1"),
+    egfr_structure_target(),
+    db_pool = NULL,
+    perform = rcsb_fixture_perform()
+  )
+  selected <- multi$structures$targets[[1]]
+  html <- structures_ui_html(multi, selected)
+  expect_match(html, "Confirmed targets included")
+  expect_match(html, "Experimental PDB entries retrieved")
+  expect_match(html, "Targets with at least one retrieved structure")
+  expect_match(html, "How to interpret these results")
+  expect_false(grepl("interpretation-guidance[^>]*open", html))
+  expect_match(html, "Predicted structures are not included")
+  expect_match(html, "PDB entry count is the number of retrieved matching experimental entries")
+  expect_match(html, "structure-table")
+  expect_match(html, "structure-pdb-id")
+  expect_match(html, "structure-title")
+  expect_match(html, "X-RAY DIFFRACTION")
+  expect_match(html, "SOLUTION NMR")
+  expect_match(html, "Not provided")
+  expect_match(html, "Open in RCSB")
+  expect_match(html, "Technical provenance")
+  expect_match(html, "RCSB Protein Data Bank")
+  expect_match(html, "Entry counts are availability, not target importance")
+  expect_false(grepl("AlphaFold", html, ignore.case = TRUE))
+  expect_false(grepl(
+    "druggability|structural support|structural strength|best structure|most structured",
+    html,
+    ignore.case = TRUE
+  ))
+  expect_gt(length(selected$records), 1L)
+  expect_equal(selected$n_pdb_entries, 4L)
+
+  long_title <- paste(rep("Long experimental structure title fragment", 10), collapse = " ")
+  selected$records[[1]]$entry$title <- long_title
+  long_html <- structures_ui_html(multi, selected)
+  expect_match(long_html, "structure-title")
+  expect_match(long_html, "Long experimental structure title fragment")
+
+  rec <- selected$records[[1]]
+  selected_html <- structures_ui_html(multi, selected, rec)
+  expect_match(selected_html, "is-selected")
+  expect_match(selected_html, "structure-inspect-pdb")
+  expect_match(selected_html, "3d-view")
+  expect_match(selected_html, rec$pdb_id)
+  expect_false(grepl("structure-shell is-stale", html))
+
+  one <- retrieve_project_structures(
+    list(id = "p1"),
+    egfr_structure_target(),
+    db_pool = NULL,
+    perform = rcsb_fixture_perform(
+      search = read_fixture("rcsb_search_same_entry.json"),
+      metadata = read_fixture("rcsb_data_same_entry.json"),
+      alignments = list(data = list(alignments = list(target_alignments = list())))
+    )
+  )
+  one_sel <- one$structures$targets[[1]]
+  one_html <- structures_ui_html(one, one_sel)
+  expect_equal(one_sel$n_pdb_entries, 1L)
+  expect_match(one_html, "1 experimental PDB entry")
+  expect_match(one_html, "ELECTRON MICROSCOPY")
+  expect_match(one_html, "3.10")
+
+  empty <- retrieve_project_structures(
+    list(id = "p1"),
+    egfr_structure_target(),
+    db_pool = NULL,
+    perform = rcsb_fixture_perform(search = read_fixture("rcsb_search_empty.json"))
+  )
+  empty_sel <- empty$structures$targets[[1]]
+  empty_html <- structures_ui_html(empty, empty_sel)
+  expect_true(isTRUE(empty_sel$search_was_empty))
+  expect_match(empty_html, "No source result")
+  expect_match(empty_html, "Predicted structures are not included")
+  expect_false(grepl("3d-view", empty_html))
+  expect_false(grepl("panel-state-unavailable", empty_html))
+
+  missing_meta <- selected
+  missing_meta$records <- list()
+  missing_meta$unavailable_entities <- c("1NQL_1")
+  missing_meta$search_was_empty <- FALSE
+  missing_current <- multi
+  missing_current$structures$targets[[1]] <- missing_meta
+  missing_html <- structures_ui_html(missing_current, missing_meta)
+  expect_match(missing_html, "Metadata unavailable")
+  expect_false(grepl("No source result", missing_html, fixed = TRUE))
+
+  failed <- multi
+  failed$structures$failures <- list(list(
+    project_target_id = "kras",
+    symbol = "KRAS",
+    message = "KRAS experimental structure retrieval failed."
+  ))
+  failed_html <- structures_ui_html(failed, selected)
+  expect_match(failed_html, "KRAS experimental structure retrieval failed")
+  expect_match(failed_html, "1NQL")
+  expect_match(failed_html, "structure-table")
+  expect_false(grepl("No source result", failed_html, fixed = TRUE))
+
+  stale <- multi
+  stale$stale_target_set <- TRUE
+  stale$stale_message <- "Confirmed target set changed. Refresh structures to retrieve current evidence."
+  stale_html <- structures_ui_html(stale, selected)
+  expect_match(stale_html, "target-set-stale")
+  expect_match(stale_html, "Refresh structures")
+  expect_match(stale_html, "structure-shell is-stale")
+  expect_match(stale_html, "1NQL")
+  expect_false(grepl("structure-shell is-stale", html))
+
+  css <- paste(readLines(file.path(app_root(), "www", "styles.css")), collapse = "\n")
+  expect_match(css, "structure-record-row.is-selected")
+  expect_match(css, "structure-title")
+  expect_match(
+    css,
+    "\\.evidence-target-switcher input\\.target-switch-input\\[type=\"radio\"\\] \\{[^}]*appearance: none"
+  )
 })
 
 test_that("stale RCSB search is reused when the live request fails", {
@@ -261,4 +410,153 @@ test_that("stale RCSB search is reused when the live request fails", {
   expect_equal(stale$status, "ok")
   expect_equal(stale$structures$provenance$cache_status, "stale")
   expect_equal(stale$structures$n_pdb_entries, live$structures$n_pdb_entries)
+})
+
+fake_structure_record <- function(i, pdb_id = NULL, title = NULL, method = "X-RAY DIFFRACTION") {
+  pdb_id <- pdb_id %||% sprintf("1%03d", as.integer(i))
+  entity <- paste0(pdb_id, "_1")
+  list(
+    pdb_id = pdb_id,
+    entry = list(
+      title = title %||% sprintf("Experimental structure %s of a receptor", pdb_id),
+      release_date = "2020-01-01"
+    ),
+    experiment = list(method = method, resolution_angstrom = "2.10 Å"),
+    polymer_entity = list(
+      entity_identifier = entity,
+      entity_id = "1",
+      chains = "A"
+    ),
+    coverage = list(
+      coverage_label = "12.0%",
+      covered_ranges = data.frame(begin = integer(), end = integer())
+    ),
+    rcsb_url = sprintf("https://www.rcsb.org/structure/%s", pdb_id),
+    viewer_url = sprintf("https://www.rcsb.org/3d-view/%s", pdb_id)
+  )
+}
+
+test_that("Structures list search and show-more are presentation-only over the full retrieved set", {
+  skip_if_not_installed("shiny")
+  source_app("R/modules/mod_structures.R")
+  records <- lapply(seq_len(392L), fake_structure_record)
+  records[[50]]$pdb_id <- "7SYD"
+  records[[50]]$polymer_entity$entity_identifier <- "7SYD_1"
+  records[[50]]$entry$title <- "EGFR kinase domain bound to osimertinib"
+  records[[50]]$rcsb_url <- "https://www.rcsb.org/structure/7SYD"
+  records[[50]]$viewer_url <- "https://www.rcsb.org/3d-view/7SYD"
+  records[[300]]$entry$title <- "cryo-EM EGFR dimer"
+  records[[300]]$experiment$method <- "ELECTRON MICROSCOPY"
+
+  expect_equal(length(records), 392L)
+  expect_equal(STRUCTURE_PAGE_SIZE, 25L)
+  expect_equal(length(structure_visible_records(records, STRUCTURE_PAGE_SIZE)), 25L)
+  more <- structure_visible_records(records, STRUCTURE_PAGE_SIZE * 2L)
+  expect_equal(length(more), 50L)
+  expect_equal(length(records), 392L)
+
+  kinase <- filter_structure_records(records, "kinase")
+  expect_equal(length(kinase), 1L)
+  expect_equal(kinase[[1]]$pdb_id, "7SYD")
+  expect_equal(length(filter_structure_records(records, "7syd")), 1L)
+  expect_equal(filter_structure_records(records, "7syd")[[1]]$pdb_id, "7SYD")
+  expect_gt(length(filter_structure_records(records, "EGFR")), 1L)
+  expect_equal(length(filter_structure_records(records, "CRYO")), 1L)
+  expect_equal(length(filter_structure_records(records, "")), 392L)
+  expect_equal(length(filter_structure_records(records, "zzz-no-structure")), 0L)
+
+  selected <- list(
+    target = list(symbol = "EGFR", uniprot_accession = "P00533", project_target_id = "egfr"),
+    n_pdb_entries = 392L,
+    n_polymer_entities = 392L,
+    max_coverage_fraction = 0.5,
+    unavailable_entities = character(),
+    search_was_empty = FALSE,
+    records = records,
+    provenance = list(
+      identifier_used = "P00533",
+      cache_status = "live",
+      retrieved_at = "2026-09-16",
+      search_api = "search.rcsb.org",
+      data_api = "data.rcsb.org",
+      sequence_coordinates_api = "sequence-coordinates.rcsb.org",
+      sort_rule = "coverage"
+    )
+  )
+  current <- list(
+    status = "ready",
+    stale_target_set = FALSE,
+    structures = list(
+      summary = data.frame(
+        project_target_id = "egfr",
+        symbol = "EGFR",
+        n_pdb_entries = 392L,
+        stringsAsFactors = FALSE
+      ),
+      targets = list(selected),
+      excluded_targets = list(),
+      failures = list(),
+      provenance = list(cache_key_family = "rcsb:search")
+    )
+  )
+
+  html25 <- structures_ui_html(current, selected, visible_n = 25L)
+  expect_equal(selected$n_pdb_entries, 392L)
+  expect_match(html25, "392 experimental PDB")
+  expect_match(html25, "Showing 1\u201325 of 392 experimental structures")
+  expect_equal(length(gregexpr("structure-record-row", html25, fixed = TRUE)[[1]]), 25L)
+  expect_match(html25, "Show 25 more")
+  expect_match(html25, "Search experimental structures")
+  expect_false(grepl("3d-view", html25))
+
+  html50 <- structures_ui_html(current, selected, visible_n = 50L)
+  expect_equal(length(gregexpr("structure-record-row", html50, fixed = TRUE)[[1]]), 50L)
+  expect_match(html50, "Showing 1\u201350 of 392 experimental structures")
+  expect_match(html50, "392 experimental PDB")
+
+  html_id <- structures_ui_html(current, selected, query = "7syd")
+  expect_match(html_id, "7SYD")
+  expect_match(html_id, "Showing 1\u20131 of 1 matching experimental structures")
+  expect_false(grepl("Show 25 more", html_id, fixed = TRUE))
+  expect_equal(selected$n_pdb_entries, 392L)
+
+  html_title <- structures_ui_html(current, selected, query = "KINASE")
+  expect_match(html_title, "EGFR kinase domain bound to osimertinib")
+  expect_match(html_title, "7SYD")
+
+  html_none <- structures_ui_html(current, selected, query = "zzz-no-structure")
+  expect_match(html_none, "No experimental structures match this search")
+  expect_false(grepl("No experimental PDB structures were found for this confirmed UniProt accession", html_none, fixed = TRUE))
+  expect_false(grepl("No source result", html_none, fixed = TRUE))
+
+  html_reset <- structures_ui_html(current, selected, query = "")
+  expect_match(html_reset, "Showing 1\u201325 of 392 experimental structures")
+
+  other <- selected
+  other$target$symbol <- "KRAS"
+  other$target$uniprot_accession <- "P01116"
+  other$target$project_target_id <- "kras"
+  other$n_pdb_entries <- 1L
+  other$n_polymer_entities <- 1L
+  other$records <- records[1]
+  other_current <- current
+  other_current$structures$summary$project_target_id <- "kras"
+  other_current$structures$summary$symbol <- "KRAS"
+  other_current$structures$summary$n_pdb_entries <- 1L
+  other_current$structures$targets <- list(other)
+  rec_a <- records[[50]]
+  html_b <- structures_ui_html(other_current, other, record = NULL, selected_id = "kras")
+  expect_false(grepl("structure-inspect-pdb", html_b))
+  expect_false(grepl("7SYD", html_b))
+  expect_match(html_b, other$records[[1]]$pdb_id)
+  expect_match(html_b, "Showing 1\u20131 of 1 experimental structures")
+
+  detail <- as.character(structure_detail_ui(shiny::NS("structures"), selected, rec_a))
+  expect_match(detail, "Open in RCSB PDB")
+  expect_match(detail, "rcsb.org/3d-view/7SYD")
+  expect_match(detail, "iframe")
+
+  css <- paste(readLines(file.path(app_root(), "www", "styles.css")), collapse = "\n")
+  expect_match(css, "\\.structure-table-wrap \\{[^}]*overflow-x:\\s*auto")
+  expect_match(css, "\\.structure-shell \\{[^}]*overflow-x:\\s*hidden")
 })

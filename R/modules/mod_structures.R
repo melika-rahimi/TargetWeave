@@ -1,3 +1,5 @@
+STRUCTURE_PAGE_SIZE <- 25L
+
 mod_structures_ui <- function(id) {
   ns <- NS(id)
   div(
@@ -22,6 +24,8 @@ mod_structures_server <- function(
     last_fetch_signature <- reactiveVal(NA_character_)
     selected_target_id <- reactiveVal(NULL)
     selected_entity_id <- reactiveVal(NULL)
+    structure_query <- reactiveVal("")
+    structure_visible_n <- reactiveVal(STRUCTURE_PAGE_SIZE)
 
     project_row <- reactive({
       req(user(), project_id())
@@ -68,6 +72,9 @@ mod_structures_server <- function(
             selected_target_id(NULL)
           }
           selected_entity_id(NULL)
+          structure_query("")
+          structure_visible_n(STRUCTURE_PAGE_SIZE)
+          updateTextInput(session, "structure_query", value = "")
         },
         error_message = "Structure retrieval could not be completed.",
         inflight = inflight,
@@ -87,12 +94,17 @@ mod_structures_server <- function(
         last_fetch_signature(NA_character_)
         selected_target_id(NULL)
         selected_entity_id(NULL)
+        structure_query("")
+        structure_visible_n(STRUCTURE_PAGE_SIZE)
         return()
       }
       gate <- structure_gate(targets)
       if (!isTRUE(gate$ok)) {
         structure_result(list(status = gate$status, message = gate$message, structures = NULL))
         last_fetch_signature(NA_character_)
+        return()
+      }
+      if (suppress_auto_retrieve_while_stale(isolate(structure_result()), "structures", force = force)) {
         return()
       }
       if (!should_retrieve_structures(TRUE, targets, isolate(last_fetch_signature()), force = force)) {
@@ -114,11 +126,22 @@ mod_structures_server <- function(
         }
         previous <- last_fetch_signature()
         next_sig <- structure_signature(target_rows())
-        if (live_signature_stale(previous, next_sig)) {
-          structure_result(NULL)
-          last_fetch_signature(NA_character_)
+        held <- hold_stale_multi_target_result(
+          structure_result(),
+          previous,
+          next_sig,
+          "structures"
+        )
+        if (isTRUE(held$changed)) {
+          structure_result(held$current)
+          if (is.null(held$current)) {
+            last_fetch_signature(NA_character_)
+          }
         }
         if (!isTRUE(isolate(panel_active()))) {
+          return()
+        }
+        if (isTRUE(held$suppress_auto_retrieve)) {
           return()
         }
         start_structures()
@@ -132,6 +155,10 @@ mod_structures_server <- function(
       }
     }, ignoreInit = TRUE)
 
+    observeEvent(input$refresh_structures, {
+      start_structures(force = TRUE)
+    }, ignoreInit = TRUE)
+
     observeEvent(input$structure_target, {
       summary <- structure_result()$structures$summary
       if (is.null(summary) || nrow(summary) == 0) {
@@ -141,7 +168,19 @@ mod_structures_server <- function(
       if (chosen %in% as.character(summary$project_target_id)) {
         selected_target_id(chosen)
         selected_entity_id(NULL)
+        structure_query("")
+        structure_visible_n(STRUCTURE_PAGE_SIZE)
+        updateTextInput(session, "structure_query", value = "")
       }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$structure_query, {
+      structure_query(as.character(input$structure_query %||% ""))
+      structure_visible_n(STRUCTURE_PAGE_SIZE)
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$structure_show_more, {
+      structure_visible_n(as.integer(structure_visible_n()) + STRUCTURE_PAGE_SIZE)
     }, ignoreInit = TRUE)
 
     observeEvent(input$structure_entity, {
@@ -195,7 +234,15 @@ mod_structures_server <- function(
           current$message %||% "Structures are not available."
         ))
       }
-      structures_result_ui(ns, current, selected_item(), selected_record(), selected_target_id())
+      structures_result_ui(
+        ns,
+        current,
+        selected_item(),
+        selected_record(),
+        selected_target_id(),
+        query = structure_query(),
+        visible_n = structure_visible_n()
+      )
     })
 
     keep_tab_outputs_visible(output, "body")
@@ -204,7 +251,73 @@ mod_structures_server <- function(
   })
 }
 
-structures_result_ui <- function(ns, current, selected, record, selected_id) {
+structure_record_search_text <- function(item) {
+  chains <- if (length(item$polymer_entity$chains) == 0) {
+    ""
+  } else {
+    paste(item$polymer_entity$chains, collapse = " ")
+  }
+  tolower(paste(
+    as.character(item$pdb_id %||% ""),
+    as.character(item$entry$title %||% ""),
+    as.character(item$experiment$method %||% ""),
+    chains,
+    sep = " "
+  ))
+}
+
+filter_structure_records <- function(records, query = "") {
+  if (is.null(records) || length(records) == 0L) {
+    return(list())
+  }
+  q <- tolower(trimws(as.character(query %||% "")))
+  if (!nzchar(q)) {
+    return(records)
+  }
+  keep <- vapply(records, function(item) {
+    grepl(q, structure_record_search_text(item), fixed = TRUE)
+  }, logical(1))
+  records[keep]
+}
+
+structure_visible_records <- function(records, visible_n = STRUCTURE_PAGE_SIZE) {
+  n <- length(records)
+  if (n == 0L) {
+    return(list())
+  }
+  limit <- suppressWarnings(as.integer(visible_n %||% STRUCTURE_PAGE_SIZE)[[1]])
+  if (!is.finite(limit) || limit < 1L) {
+    limit <- STRUCTURE_PAGE_SIZE
+  }
+  records[seq_len(min(limit, n))]
+}
+
+structure_showing_label <- function(shown, matching, queried = FALSE) {
+  shown <- as.integer(shown)
+  matching <- as.integer(matching)
+  if (identical(matching, 0L) && isTRUE(queried)) {
+    return("No experimental structures match this search.")
+  }
+  if (identical(matching, 0L)) {
+    return(NULL)
+  }
+  sprintf(
+    "Showing 1\u2013%s of %s%s",
+    shown,
+    matching,
+    if (isTRUE(queried)) " matching experimental structures" else " experimental structures"
+  )
+}
+
+structures_result_ui <- function(
+  ns,
+  current,
+  selected,
+  record,
+  selected_id,
+  query = "",
+  visible_n = STRUCTURE_PAGE_SIZE
+) {
   bag <- current$structures
   summary <- bag$summary
   choices <- if (!is.null(summary) && nrow(summary) > 0) {
@@ -212,177 +325,277 @@ structures_result_ui <- function(ns, current, selected, record, selected_id) {
   } else {
     NULL
   }
+  n_targets <- if (is.null(summary)) 0L else nrow(summary)
+  n_entries <- if (n_targets == 0L) 0L else sum(as.integer(summary$n_pdb_entries))
+  n_with_structure <- if (n_targets == 0L) 0L else sum(as.integer(summary$n_pdb_entries) > 0L)
+  shell_class <- paste(
+    c("structure-shell", if (isTRUE(current$stale_target_set)) "is-stale"),
+    collapse = " "
+  )
+
   tagList(
+    target_set_stale_banner(ns, current, "refresh_structures", "Refresh structures"),
     div(
-      class = "evidence-pair",
-      h2("Structures"),
-      p(
-        class = "panel-intro",
-        "Experimentally determined PDB polymer entities matching the confirmed UniProt accession, with UniProt sequence coverage."
-      )
-    ),
-    p(
-      class = "interpretation-note",
-      "Experimental PDB structures may represent only part of the canonical protein and may contain engineered mutations or complexes. Structural availability does not by itself indicate biological importance, therapeutic relevance, or target quality."
-    ),
-    if (length(bag$excluded_targets) > 0) {
-      div(class = "form-message", paste(vapply(bag$excluded_targets, function(item) item$message, character(1)), collapse = " "))
-    },
-    if (length(bag$failures) > 0) {
-      div(class = "form-message error", paste(vapply(bag$failures, function(item) item$message, character(1)), collapse = " "))
-    },
-    if (!is.null(choices)) {
-      radioButtons(
-        ns("structure_target"),
-        "Target",
-        choices = choices,
-        selected = selected_id %||% as.character(choices[[1]]),
-        inline = TRUE
-      )
-    },
-    if (is.null(selected)) {
-      panel_state_ui(
-        "blocked",
-        "No UniProt accession for PDB retrieval",
-        "Confirm identity so experimental structure lookup can use a UniProt accession."
-      )
-    } else {
-      tagList(
-        div(
-          class = "overview-section",
-          h3("Experimental structure availability"),
-          tags$ul(
-            class = "project-status-list",
-            tags$li(sprintf("Target: %s", selected$target$symbol)),
-            tags$li(sprintf("UniProt: %s", selected$target$uniprot_accession)),
-            tags$li(sprintf("Experimental PDB entries: %s", selected$n_pdb_entries)),
-            tags$li(sprintf("Matching polymer entities: %s", selected$n_polymer_entities)),
-            tags$li(sprintf(
-              "Maximum sequence coverage among retrieved experimental structures: %s",
-              if (is.na(selected$max_coverage_fraction)) {
-                "Not provided"
-              } else {
-                sprintf("%.1f%%", 100 * selected$max_coverage_fraction)
-              }
-            ))
-          ),
-          p(class = "field-help", "Predicted structures are not included in this view. Entry count is unique PDB IDs, not polymer-entity rows.")
+      class = shell_class,
+      evidence_page_header(
+        "Structures",
+        "Experimentally determined PDB structures associated with confirmed targets."
+      ),
+      interpretation_guidance_ui(
+        p("Experimental PDB structures may represent only part of the canonical protein and may contain engineered mutations or complexes. Structural availability does not by itself indicate biological importance, therapeutic relevance, or target quality."),
+        p("PDB entry count is the number of retrieved matching experimental entries, not target importance. Experimental method and resolution describe the experiment, not therapeutic value."),
+        p("Absence of a retrieved PDB structure does not prove absence of structural knowledge. These records are experimental RCSB PDB structures. Predicted structures are not included in this release.")
+      ),
+      exclusion_status_ui(bag$excluded_targets, bag$failures),
+      evidence_summary_strip(
+        aria_label = "Experimental structure context",
+        evidence_metric(
+          "Confirmed targets included",
+          n_targets,
+          "Confirmed identities with an experimental RCSB retrieval attempt in this result."
         ),
-        if (length(selected$unavailable_entities) > 0) {
-          p(
-            class = "field-help",
-            sprintf(
-              "Metadata unavailable for %s matching polymer entit%s.",
-              length(selected$unavailable_entities),
-              if (identical(length(selected$unavailable_entities), 1L)) "y" else "ies"
-            )
-          )
-        },
-        if (isTRUE(selected$search_was_empty) || (identical(selected$n_pdb_entries, 0L) && length(selected$unavailable_entities) == 0)) {
-          panel_state_ui(
-            "empty",
-            "No source result",
-            "No experimental PDB structures were found for this confirmed UniProt accession. Predicted structures are not included."
-          )
-        } else if (length(selected$records) == 0) {
-          panel_state_ui(
-            "unavailable",
-            "Metadata unavailable",
-            "Experimental PDB identifiers were found, but structure metadata could not be retrieved. Open in RCSB PDB remains available when identifiers are listed."
-          )
-        } else {
-          tagList(
+        evidence_metric(
+          "Experimental PDB entries retrieved",
+          n_entries,
+          "Sum of unique PDB IDs retrieved per confirmed target. Availability only."
+        ),
+        evidence_metric(
+          "Targets with at least one retrieved structure",
+          n_with_structure,
+          "Confirmed targets whose experimental search returned at least one PDB ID."
+        )
+      ),
+      if (!is.null(choices)) {
+        evidence_target_switcher_ui(
+          ns("structure_target"),
+          "Target",
+          choices,
+          selected_id %||% as.character(choices[[1]])
+        )
+      },
+      if (is.null(selected)) {
+        panel_state_ui(
+          "blocked",
+          "No UniProt accession for PDB retrieval",
+          "Confirm identity so experimental structure lookup can use a UniProt accession."
+        )
+      } else {
+        tagList(
+          evidence_primary_surface(
             div(
-              class = "overview-section",
-              h3("Sequence coverage"),
+              class = "experimental-structures-surface",
+              evidence_section_header(
+                "Experimental structures",
+                sprintf(
+                  "%s \u00b7 UniProt %s \u00b7 %s experimental PDB %s \u00b7 %s matching polymer %s.",
+                  selected$target$symbol,
+                  selected$target$uniprot_accession,
+                  selected$n_pdb_entries,
+                  if (identical(as.integer(selected$n_pdb_entries), 1L)) "entry" else "entries",
+                  selected$n_polymer_entities,
+                  if (identical(as.integer(selected$n_polymer_entities), 1L)) "entity" else "entities"
+                )
+              ),
               p(
                 class = "field-help",
                 sprintf(
-                  "Sorted by sequence coverage, then release date. Showing up to %s polymer entities of %s. Navy marks UniProt residues represented in the mapped experimental polymer entity.",
-                  min(STRUCTURE_COVERAGE_ROW_CAP, selected$n_polymer_entities),
-                  selected$n_polymer_entities
+                  "Maximum sequence coverage among retrieved experimental structures: %s. Predicted structures are not included in this view. Entry count is unique PDB IDs, not polymer-entity rows.",
+                  if (is.na(selected$max_coverage_fraction)) {
+                    "Not provided"
+                  } else {
+                    sprintf("%.1f%%", 100 * selected$max_coverage_fraction)
+                  }
                 )
               ),
-              as_live_viz(export_lite_coverage_html(
-                selected$records,
-                selected$uniprot_length,
-                selected$target$symbol
-              ))
-            ),
-            structure_table_ui(ns, selected),
-            structure_detail_ui(ns, selected, record),
-            div(
-              class = "overview-section",
-              h3("Experimental PDB entries by target"),
-              p(class = "field-help", "Entry counts are availability, not target importance."),
-              as_live_viz(export_lite_pdb_counts_html(summary))
+              if (length(selected$unavailable_entities) > 0) {
+                p(
+                  class = "field-help",
+                  sprintf(
+                    "Metadata unavailable for %s matching polymer entit%s.",
+                    length(selected$unavailable_entities),
+                    if (identical(length(selected$unavailable_entities), 1L)) "y" else "ies"
+                  )
+                )
+              },
+              structure_selected_records_ui(ns, selected, record, query = query, visible_n = visible_n)
             )
+          ),
+          if (length(selected$records) > 0) {
+            structure_detail_ui(ns, selected, record)
+          },
+          if (!(isTRUE(selected$search_was_empty) || (identical(selected$n_pdb_entries, 0L) && length(selected$unavailable_entities) == 0)) &&
+              length(selected$records) > 0) {
+            tagList(
+              evidence_details_disclosure(
+                "Sequence coverage",
+                p(
+                  class = "field-help",
+                  sprintf(
+                    "Sorted by sequence coverage, then release date. Showing up to %s polymer entities of %s. Navy marks UniProt residues represented in the mapped experimental polymer entity.",
+                    min(STRUCTURE_COVERAGE_ROW_CAP, selected$n_polymer_entities),
+                    selected$n_polymer_entities
+                  )
+                ),
+                as_live_viz(export_lite_coverage_html(
+                  selected$records,
+                  selected$uniprot_length,
+                  selected$target$symbol
+                ))
+              ),
+              evidence_details_disclosure(
+                "Experimental PDB entries by target",
+                p(class = "field-help", "Entry counts are availability, not target importance."),
+                as_live_viz(export_lite_pdb_counts_html(summary))
+              )
+            )
+          },
+          structure_provenance_ui(selected, bag)
+        )
+      }
+    )
+  )
+}
+
+structure_selected_records_ui <- function(ns, selected, record, query = "", visible_n = STRUCTURE_PAGE_SIZE) {
+  if (isTRUE(selected$search_was_empty) || (identical(selected$n_pdb_entries, 0L) && length(selected$unavailable_entities) == 0)) {
+    return(panel_state_ui(
+      "empty",
+      "No source result",
+      "No experimental PDB structures were found for this confirmed UniProt accession. Predicted structures are not included."
+    ))
+  }
+  if (length(selected$records) == 0) {
+    return(panel_state_ui(
+      "unavailable",
+      "Metadata unavailable",
+      "Experimental PDB identifiers were found, but structure metadata could not be retrieved. Open in RCSB PDB remains available when identifiers are listed."
+    ))
+  }
+  structure_table_ui(ns, selected, record, query = query, visible_n = visible_n)
+}
+
+structure_table_ui <- function(ns, selected, record = NULL, query = "", visible_n = STRUCTURE_PAGE_SIZE) {
+  records <- selected$records
+  queried <- nzchar(trimws(as.character(query %||% "")))
+  matching <- filter_structure_records(records, query)
+  visible <- structure_visible_records(matching, visible_n)
+  n_matching <- length(matching)
+  n_shown <- length(visible)
+  entity_ids <- vapply(records, function(item) item$polymer_entity$entity_identifier, character(1))
+  names(entity_ids) <- vapply(records, function(item) {
+    sprintf("%s entity %s", item$pdb_id, item$polymer_entity$entity_id)
+  }, character(1))
+  selected_entity <- if (is.null(record)) "" else record$polymer_entity$entity_identifier
+  input_id <- ns("structure_entity")
+  showing <- structure_showing_label(n_shown, n_matching, queried)
+  div(
+    class = "structure-table-wrap",
+    textInput(
+      ns("structure_query"),
+      "Search experimental structures",
+      value = as.character(query %||% ""),
+      placeholder = "PDB ID, title, method, or chain"
+    ),
+    if (!is.null(showing)) p(class = "structure-showing field-help", showing),
+    selectInput(
+      input_id,
+      "Inspect polymer entity",
+      choices = c("Select a structure" = "", entity_ids),
+      selected = if (identical(selected_entity, "")) "" else selected_entity
+    ),
+    if (identical(n_matching, 0L) && isTRUE(queried)) {
+      panel_state_ui(
+        "empty",
+        "No experimental structures match this search.",
+        "The retrieved experimental PDB set is unchanged. Clear the search to show all retrieved structures."
+      )
+    } else {
+      tagList(
+        tags$table(
+          class = "evidence-table structure-table",
+          tags$thead(
+            tags$tr(
+              tags$th("PDB ID"),
+              tags$th("Title"),
+              tags$th("Entity"),
+              tags$th("Chain(s)"),
+              tags$th("Method"),
+              tags$th("Resolution"),
+              tags$th("Coverage"),
+              tags$th("Released"),
+              tags$th("RCSB")
+            )
+          ),
+          tags$tbody(
+            lapply(visible, function(item) {
+              entity_id <- item$polymer_entity$entity_identifier
+              is_selected <- identical(entity_id, selected_entity)
+              tags$tr(
+                class = paste(
+                  c(
+                    "structure-record-row",
+                    "is-clickable",
+                    if (isTRUE(is_selected)) "is-selected"
+                  ),
+                  collapse = " "
+                ),
+                `data-entity-id` = entity_id,
+                onclick = sprintf(
+                  "Shiny.setInputValue('%s', '%s', {priority: 'event'})",
+                  input_id,
+                  entity_id
+                ),
+                tags$td(span(class = "structure-pdb-id", item$pdb_id)),
+                tags$td(span(class = "structure-title", item$entry$title)),
+                tags$td(entity_id),
+                tags$td(if (length(item$polymer_entity$chains) == 0) "Not provided" else paste(item$polymer_entity$chains, collapse = ", ")),
+                tags$td(span(class = "structure-method", item$experiment$method)),
+                tags$td(span(class = "structure-resolution", item$experiment$resolution_angstrom)),
+                tags$td(item$coverage$coverage_label),
+                tags$td(item$entry$release_date),
+                tags$td(
+                  tags$a(
+                    class = "btn-text structure-rcsb-link",
+                    href = item$rcsb_url,
+                    target = "_blank",
+                    rel = "noopener noreferrer",
+                    onclick = "event.stopPropagation()",
+                    "Open in RCSB"
+                  )
+                )
+              )
+            })
           )
-        },
-        structure_provenance_ui(selected, bag)
+        ),
+        if (n_shown < n_matching) {
+          actionButton(
+            ns("structure_show_more"),
+            sprintf("Show %s more", STRUCTURE_PAGE_SIZE),
+            class = "btn-primary-quiet"
+          )
+        }
       )
     }
   )
 }
 
-structure_table_ui <- function(ns, selected) {
-  records <- selected$records
-  entity_ids <- vapply(records, function(item) item$polymer_entity$entity_identifier, character(1))
-  names(entity_ids) <- vapply(records, function(item) {
-    sprintf("%s entity %s", item$pdb_id, item$polymer_entity$entity_id)
-  }, character(1))
-  div(
-    class = "overview-section structure-table-wrap",
-    h3("Structure table"),
-    selectInput(
-      ns("structure_entity"),
-      "Inspect polymer entity",
-      choices = c("Select a structure" = "", entity_ids),
-      selected = ""
-    ),
-    tags$table(
-      class = "evidence-table structure-table",
-      tags$thead(
-        tags$tr(
-          tags$th("PDB ID"),
-          tags$th("Title"),
-          tags$th("Entity"),
-          tags$th("Chain(s)"),
-          tags$th("Method"),
-          tags$th("Resolution"),
-          tags$th("Coverage"),
-          tags$th("Released")
-        )
-      ),
-      tags$tbody(
-        lapply(records, function(item) {
-          tags$tr(
-            tags$td(item$pdb_id),
-            tags$td(item$entry$title),
-            tags$td(item$polymer_entity$entity_identifier),
-            tags$td(if (length(item$polymer_entity$chains) == 0) "Not provided" else paste(item$polymer_entity$chains, collapse = ", ")),
-            tags$td(item$experiment$method),
-            tags$td(item$experiment$resolution_angstrom),
-            tags$td(item$coverage$coverage_label),
-            tags$td(item$entry$release_date)
-          )
-        })
-      )
-    )
-  )
-}
-
 structure_detail_ui <- function(ns, selected, record) {
   div(
-    class = "overview-section",
-    h3("Selected structure"),
+    class = "structure-inspect",
+    evidence_section_header(
+      "Selected experimental structure",
+      "Select a polymer entity to inspect metadata and open the official RCSB Mol* 3D view. One experimental structure loads at a time."
+    ),
     if (is.null(record)) {
-      p(class = "field-help", "Select a polymer entity to inspect metadata and open the 3D view. One experimental structure loads at a time.")
+      p(class = "field-help", "No polymer entity is selected.")
     } else {
       tagList(
         tags$ul(
-          class = "project-status-list",
-          tags$li(sprintf("PDB ID: %s", record$pdb_id)),
+          class = "project-status-list structure-inspect-list",
+          tags$li(
+            tags$span("PDB ID: "),
+            tags$span(class = "structure-inspect-pdb", record$pdb_id)
+          ),
           tags$li(sprintf("Title: %s", record$entry$title)),
           tags$li(sprintf("Experimental method: %s", record$experiment$method)),
           tags$li(sprintf("Resolution: %s", record$experiment$resolution_angstrom)),
@@ -458,9 +671,8 @@ structure_provenance_ui <- function(selected, bag) {
     stale = "Stale",
     as.character(prov$cache_status %||% "Unknown")
   )
-  div(
-    class = "overview-section",
-    h3("Source"),
+  evidence_details_disclosure(
+    "Technical provenance",
     tags$table(
       class = "evidence-table",
       tags$tbody(
@@ -468,23 +680,13 @@ structure_provenance_ui <- function(selected, bag) {
         tags$tr(tags$th("UniProt accession used"), tags$td(prov$identifier_used)),
         tags$tr(tags$th("Query scope"), tags$td("experimental")),
         tags$tr(tags$th("Retrieved"), tags$td(as.character(prov$retrieved_at))),
-        tags$tr(tags$th("Cache"), tags$td(cache_label))
-      )
-    ),
-    tags$details(
-      class = "about-scores",
-      tags$summary("Technical provenance"),
-      tags$table(
-        class = "evidence-table",
-        tags$tbody(
-          tags$tr(tags$th("Search API"), tags$td(prov$search_api)),
-          tags$tr(tags$th("Data API"), tags$td(prov$data_api)),
-          tags$tr(tags$th("Sequence Coordinates API"), tags$td(prov$sequence_coordinates_api)),
-          tags$tr(tags$th("Query scope"), tags$td("experimental")),
-          tags$tr(tags$th("Display sort"), tags$td(prov$sort_rule)),
-          tags$tr(tags$th("Cache key family"), tags$td(bag$provenance$cache_key_family)),
-          tags$tr(tags$th("3D viewer"), tags$td("Official RCSB Mol* 3D view (iframe)"))
-        )
+        tags$tr(tags$th("Cache"), tags$td(cache_label)),
+        tags$tr(tags$th("Search API"), tags$td(prov$search_api)),
+        tags$tr(tags$th("Data API"), tags$td(prov$data_api)),
+        tags$tr(tags$th("Sequence Coordinates API"), tags$td(prov$sequence_coordinates_api)),
+        tags$tr(tags$th("Display sort"), tags$td(prov$sort_rule)),
+        tags$tr(tags$th("Cache key family"), tags$td(bag$provenance$cache_key_family)),
+        tags$tr(tags$th("3D viewer"), tags$td("Official RCSB Mol* 3D view (iframe)"))
       )
     )
   )

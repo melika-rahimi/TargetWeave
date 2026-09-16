@@ -274,6 +274,27 @@ disclosure <- function(summary_label, ..., class = "tw-disclosure") {
   )
 }
 
+interpretation_guidance_ui <- function(...) {
+  disclosure(
+    "How to interpret these results",
+    div(class = "interpretation-guidance-body", ...),
+    class = "interpretation-guidance"
+  )
+}
+
+# Shiny+Bootstrap 5: showModal() while a modal is already visible stacks
+# backdrops and can leave body.modal-open (overflow:hidden) after close.
+replace_shiny_modal <- function(session, ui) {
+  shiny::removeModal()
+  session$onFlushed(
+    function() {
+      shiny::showModal(ui)
+    },
+    once = TRUE
+  )
+  invisible(TRUE)
+}
+
 # Named vector for radio/checkbox groups: values are immutable target IDs,
 # names are confirmed symbols. Do not use the symbol as the unique key.
 target_selector_choices <- function(ids, labels) {
@@ -286,4 +307,71 @@ target_selector_choices <- function(ids, labels) {
     labels <- ids
   }
   stats::setNames(ids, labels)
+}
+
+is_unconfirmed_exclusion <- function(item) {
+  reason <- as.character(item$reason %||% "")
+  identical(reason, "unconfirmed") || identical(reason, "Target is not confirmed")
+}
+
+exclusion_item_entered_label <- function(item) {
+  input_text <- item$input_text
+  if (has_display_text(input_text)) {
+    return(as.character(input_text[[1]]))
+  }
+  symbol <- item$symbol
+  if (has_display_text(symbol)) {
+    return(as.character(symbol[[1]]))
+  }
+  ""
+}
+
+unresolved_exclusion_notice_ui <- function(excluded) {
+  items <- Filter(is_unconfirmed_exclusion, excluded %||% list())
+  if (length(items) == 0L) {
+    return(NULL)
+  }
+  labels <- unique(Filter(nzchar, vapply(items, exclusion_item_entered_label, character(1))))
+  if (length(labels) == 0L) {
+    return(NULL)
+  }
+  text <- if (length(labels) == 1L) {
+    sprintf("%s excluded until its identity is confirmed.", labels[[1]])
+  } else {
+    sprintf(
+      "%d unresolved targets are excluded until identity is confirmed: %s",
+      length(labels),
+      paste(labels, collapse = ", ")
+    )
+  }
+  p(class = "unresolved-exclusion-note", text)
+}
+
+other_exclusion_messages_ui <- function(excluded) {
+  items <- Filter(function(item) !is_unconfirmed_exclusion(item), excluded %||% list())
+  if (length(items) == 0L) {
+    return(NULL)
+  }
+  texts <- vapply(items, function(item) {
+    as.character(item$message %||% item$reason %||% "This target was excluded.")
+  }, character(1))
+  div(class = "form-message", paste(texts, collapse = " "))
+}
+
+source_failure_messages_ui <- function(failures) {
+  if (length(failures) == 0L) {
+    return(NULL)
+  }
+  div(
+    class = "form-message error",
+    paste(vapply(failures, function(item) item$message, character(1)), collapse = " ")
+  )
+}
+
+exclusion_status_ui <- function(excluded = list(), failures = list()) {
+  tagList(
+    unresolved_exclusion_notice_ui(excluded),
+    other_exclusion_messages_ui(excluded),
+    source_failure_messages_ui(failures)
+  )
 }

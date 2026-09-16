@@ -465,7 +465,7 @@ test_that("navigation alone does not retrieve comparison again", {
     confirmed_ot_target("ENSG00000133703", "KRAS", id = "t-kras")
   )
   project <- confirmed_ot_project()
-  sig <- comparison_signature(project, targets$id)
+  sig <- comparison_signature(project, targets)
   expect_true(should_retrieve_comparison(TRUE, project, targets, NA_character_))
   expect_false(should_retrieve_comparison(TRUE, project, targets, sig))
   expect_false(should_retrieve_comparison(FALSE, project, targets, NA_character_))
@@ -586,7 +586,12 @@ test_that("comparison UI copy distinguishes scores from recommendations", {
   ))
   expect_match(html, "should not be interpreted as probabilities")
   expect_equal(length(gregexpr("should not be interpreted as probabilities", html)[[1]]), 1)
+  expect_match(html, "How to interpret these results")
+  expect_match(html, "interpretation-guidance")
+  expect_false(grepl("interpretation-guidance[^>]*open", html))
+  expect_false(grepl("interpretation-note", html))
   expect_match(html, "Open Targets overall association score")
+  expect_match(html, "compare-matrix")
   expect_match(html, "Inspect EGFR")
   expect_false(grepl("TargetWeave score|Recommended target|Best target", html))
   expect_match(html, "Technical provenance")
@@ -594,4 +599,131 @@ test_that("comparison UI copy distinguishes scores from recommendations", {
   expect_equal(workspace_panel_label("compare"), "Compare evidence")
   expect_equal(workspace_back_destination("compare"), "project")
   expect_equal(workspace_back_label("compare"), "Back to project")
+})
+
+comparison_ui_html <- function(packed, selected = NULL) {
+  source_app("R/modules/mod_disease_evidence.R")
+  source_app("R/modules/mod_ot_comparison.R")
+  if (is.null(selected)) {
+    selected <- packed$comparison$targets$project_target_id
+  }
+  paste(as.character(comparison_result_ui(packed, shiny::NS("compare"), selected)), collapse = "\n")
+}
+
+cloned_payload <- function(ensembl, symbol, overall, inclusive = overall, scores = list(list(id = "clinical", score = overall))) {
+  clone_association_payload(ensembl, symbol, overall, inclusive, scores)
+}
+
+test_that("comparison matrix preserves scores and distinguishes zero, missing, failed, and stale", {
+  skip_if_not_installed("shiny")
+  source_app("R/modules/mod_disease_evidence.R")
+  source_app("R/modules/mod_ot_comparison.R")
+
+  expect_equal(comparison_bar_width_pct(0.4, 0.4), 100)
+  expect_equal(comparison_bar_width_pct(0.2, 0.4), 50)
+  expect_equal(comparison_bar_width_pct(0, 1), 0)
+  expect_equal(comparison_score_cell_state(0, TRUE), "zero")
+  expect_equal(comparison_score_cell_state(NA_real_, TRUE), "missing")
+  expect_equal(comparison_score_cell_state(0.5, FALSE, "error"), "failed")
+  expect_equal(comparison_score_cell_state(0.5, TRUE), "ok")
+
+  packed <- retrieve_project_comparison(
+    confirmed_ot_project(),
+    nsclc_targets(),
+    pair_retrieve = pair_fetch_for(
+      c(standard_payloads(), list(ENSG00000140443 = read_fixture("ot_association_egfr_nsclc.json"))),
+      errors = "ENSG00000140443",
+      stale = "ENSG00000141510"
+    )
+  )
+  html <- comparison_ui_html(packed)
+  expect_match(html, "compare-matrix")
+  expect_match(html, "Confirmed targets")
+  expect_match(html, ">4<")
+  expect_match(html, "non-small cell lung carcinoma")
+  expect_match(html, "Evidence dimensions represented")
+  expect_equal(comparison_evidence_dimension_count(packed$comparison), 1L + length(unique(packed$comparison$datatype_matrix$datatype_id)))
+  egfr <- packed$comparison$targets[packed$comparison$targets$symbol == "EGFR", ]
+  kras <- packed$comparison$targets[packed$comparison$targets$symbol == "KRAS", ]
+  expect_match(html, format_score(egfr$overall_direct_score[[1]]), fixed = TRUE)
+  expect_match(html, format_score(kras$overall_direct_score[[1]]), fixed = TRUE)
+  expect_match(html, "0.000")
+  expect_match(html, "not returned")
+  expect_match(html, "Evidence unavailable")
+  expect_match(html, "data-compare-state=\"zero\"")
+  expect_match(html, "data-compare-state=\"missing\"")
+  expect_match(html, "data-compare-state=\"failed\"")
+  expect_match(html, "compare-matrix-row is-stale")
+  expect_false(grepl("data-compare-state=\"missing\"[^>]*>0.000", html))
+  expect_false(grepl("Best target|most promising|composite", html, ignore.case = TRUE))
+  expect_match(html, "View comparison details")
+  expect_match(html, "Broader ontology-aware score")
+  expect_match(html, format_score(egfr$overall_inclusive_score[[1]]), fixed = TRUE)
+
+  stale <- packed
+  stale$stale_target_set <- TRUE
+  stale$stale_message <- "Confirmed target set changed. Refresh comparison to retrieve current evidence."
+  stale_html <- comparison_ui_html(stale)
+  expect_match(stale_html, "target-set-stale")
+  expect_match(stale_html, "Refresh comparison")
+  expect_match(stale_html, "compare-shell is-stale")
+  expect_match(stale_html, format_score(egfr$overall_direct_score[[1]]), fixed = TRUE)
+
+  current_html <- comparison_ui_html(packed)
+  expect_false(grepl("compare-shell is-stale", current_html))
+  expect_false(grepl("target-set-stale", current_html))
+})
+
+test_that("comparison matrix keeps target rows for 3, 5, and 8 confirmed targets", {
+  skip_if_not_installed("shiny")
+  source_app("R/modules/mod_disease_evidence.R")
+  source_app("R/modules/mod_ot_comparison.R")
+
+  catalog <- list(
+    list(id = "t-egfr", ensembl = "ENSG00000146648", symbol = "EGFR", score = 0.85),
+    list(id = "t-kras", ensembl = "ENSG00000133703", symbol = "KRAS", score = 0.72),
+    list(id = "t-tp53", ensembl = "ENSG00000141510", symbol = "TP53", score = 0.61),
+    list(id = "t-met", ensembl = "ENSG00000105976", symbol = "MET", score = 0.51),
+    list(id = "t-alk", ensembl = "ENSG00000171094", symbol = "ALK", score = 0.44),
+    list(id = "t-braf", ensembl = "ENSG00000157764", symbol = "BRAF", score = 0.33),
+    list(id = "t-ros1", ensembl = "ENSG00000067560", symbol = "ROS1", score = 0.22),
+    list(id = "t-ret", ensembl = "ENSG00000165731", symbol = "RET", score = 0.11)
+  )
+
+  render_n <- function(n) {
+    slice <- catalog[seq_len(n)]
+    targets <- do.call(rbind, lapply(slice, function(item) {
+      confirmed_ot_target(item$ensembl, item$symbol, id = item$id)
+    }))
+    payloads <- list()
+    for (item in slice) {
+      payloads[[item$ensembl]] <- cloned_payload(
+        item$ensembl,
+        item$symbol,
+        item$score,
+        item$score + 0.05,
+        list(list(id = "clinical", score = item$score), list(id = "rna_expression", score = 0))
+      )
+    }
+    packed <- retrieve_project_comparison(
+      confirmed_ot_project(),
+      targets,
+      pair_retrieve = pair_fetch_for(payloads)
+    )
+    html <- comparison_ui_html(packed)
+    list(packed = packed, html = html, symbols = vapply(slice, function(item) item$symbol, character(1)))
+  }
+
+  for (n in c(3L, 5L, 8L)) {
+    rendered <- render_n(n)
+    expect_equal(nrow(rendered$packed$comparison$targets), n)
+    expect_equal(sort(rendered$packed$comparison$targets$symbol), sort(rendered$symbols))
+    expect_equal(length(gregexpr("compare-matrix-row", rendered$html)[[1]]), n)
+    for (symbol in rendered$symbols) {
+      expect_true(grepl(symbol, rendered$html, fixed = TRUE), info = paste(n, symbol))
+    }
+    expect_match(rendered$html, "0.000")
+    expect_match(rendered$html, "compare-matrix-scroll")
+    expect_false(grepl("medal|winner|best target", rendered$html, ignore.case = TRUE))
+  }
 })
